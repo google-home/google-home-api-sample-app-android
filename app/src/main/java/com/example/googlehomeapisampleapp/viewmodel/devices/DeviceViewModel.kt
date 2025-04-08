@@ -88,6 +88,9 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             if (primaryType is UnknownDeviceType && typeSet.size == 1)
                 primaryType = typeSet.first()
 
+            // Set the connectivityState from the primary device type:
+            connectivity = primaryType.metadata.sourceConnectivity.connectivityState
+
             // Container for list of supported traits present on the primary device type:
             val supportedTraits: List<Trait> = getSupportedTraits(primaryType.traits())
 
@@ -150,7 +153,7 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
             val targetTrait: TraitFactory<out Trait>? = statusMap.get(type.factory)
 
-            if (connectivity != ConnectivityState.ONLINE)
+            if (type.metadata.sourceConnectivity.connectivityState != ConnectivityState.ONLINE)
                 return "Offline"
 
             if (targetTrait == null)

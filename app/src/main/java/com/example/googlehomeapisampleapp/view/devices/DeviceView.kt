@@ -96,20 +96,21 @@ fun ControlListComponent (homeAppVM: HomeAppViewModel) {
     val deviceTypeName: String = deviceVM.typeName.collectAsState().value
     val deviceTraits: List<Trait> = deviceVM.traits.collectAsState().value
 
-    val isConnected: Boolean = (deviceVM.connectivity == ConnectivityState.ONLINE)
-
     Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
         Text(deviceTypeName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 
     for (trait in deviceTraits) {
-        ControlListItem(trait, isConnected, deviceType)
+        ControlListItem(trait, deviceType)
     }
 }
 
 @Composable
-fun ControlListItem (trait: Trait, isConnected: Boolean, type: DeviceType) {
+fun ControlListItem (trait: Trait, type: DeviceType) {
     val scope: CoroutineScope = rememberCoroutineScope()
+
+    val isConnected : Boolean =
+        type.metadata.sourceConnectivity.connectivityState == ConnectivityState.ONLINE
 
     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         when (trait) {
