@@ -100,15 +100,16 @@ fun DevicesView (homeAppVM: HomeAppViewModel) {
                 Row (horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                     Box {
                         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            for (structure in structureVMs) {
-                                DropdownMenuItem(
-                                    text = { Text(structure.name) },
-                                    onClick = {
-                                        scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
-                                        expanded = false
-                                    }
-                                )
-                            }
+// TODO: 5.1.2 - Show list of structures in DropdownMenu
+//                             for (structure in structureVMs) {
+//                                 DropdownMenuItem(
+//                                     text = { Text(structure.name) },
+//                                     onClick = {
+//                                         scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
+//                                         expanded = false
+//                                     }
+//                                 )
+//                             }
                         }
                     }
                 }
@@ -162,13 +163,15 @@ fun DeviceListComponent (homeAppVM: HomeAppViewModel) {
 
 
     for (roomVM in selectedRoomVMs) {
-        RoomListItem(roomVM)
+// TODO: 5.2.3 - Render the list of rooms
+//         RoomListItem(roomVM)
 
-        val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
-
-        for (deviceVM in deviceVMsInRoom) {
-            DeviceListItem(deviceVM, homeAppVM)
-        }
+// TODO: 5.2.4 - Render the list of devices in a room
+//         val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
+//
+//         for (deviceVM in deviceVMsInRoom) {
+//             DeviceListItem(deviceVM, homeAppVM)
+//         }
     }
 
     if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {

@@ -79,14 +79,15 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             // Container for the primary type for this device:
             var primaryType : DeviceType = UnknownDeviceType()
 
-            // Among all the types returned for this device, find the primary one:
-            for (typeInSet in typeSet)
-                if (typeInSet.metadata.isPrimaryType)
-                    primaryType = typeInSet
-
-            // Optional: For devices with a single type that did not define a primary:
-            if (primaryType is UnknownDeviceType && typeSet.size == 1)
-                primaryType = typeSet.first()
+// TODO: 6.1.1 - Determine the primary type for this device
+//             // Among all the types returned for this device, find the primary one:
+//             for (typeInSet in typeSet)
+//                 if (typeInSet.metadata.isPrimaryType)
+//                     primaryType = typeInSet
+//
+//             // Optional: For devices with a single type that did not define a primary:
+//             if (primaryType is UnknownDeviceType && typeSet.size == 1)
+//                 primaryType = typeSet.first()
 
             // Set the connectivityState from the primary device type:
             connectivity = primaryType.metadata.sourceConnectivity.connectivityState
@@ -110,10 +111,10 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
     fun getSupportedTraits(traits: Set<Trait>) : List<Trait> {
         val supportedTraits: MutableList<Trait> = mutableListOf()
-
-        for (trait in traits)
-            if (trait.factory in HomeApp.supportedTraits)
-                supportedTraits.add(trait)
+// TODO: 6.1.2 - Get only the supported traits for this device
+//        for (trait in traits)
+//            if (trait.factory in HomeApp.supportedTraits)
+//                supportedTraits.add(trait)
 
         return supportedTraits
     }

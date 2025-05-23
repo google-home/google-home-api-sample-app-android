@@ -88,21 +88,22 @@ class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
     }
 
     private suspend fun subscribeToStructures() {
-        // Subscribe to structures returned by the Structures API:
-        homeApp.homeClient.structures().collect { structureSet ->
-            val structureVMList: MutableList<StructureViewModel> = mutableListOf()
-            // Store structures in container ViewModels:
-            for (structure in structureSet) {
-                structureVMList.add(StructureViewModel(structure))
-            }
-            // Store the ViewModels:
-            structureVMs.emit(structureVMList)
-
-            // If a structure isn't selected yet, select the first structure from the list:
-            if (selectedStructureVM.value == null && structureVMList.isNotEmpty())
-                selectedStructureVM.emit(structureVMList.first())
-
-        }
+// TODO: 5.1.1 - Subscribe the structure data changes
+//         // Subscribe to structures returned by the Structures API:
+//         homeApp.homeClient.structures().collect { structureSet ->
+//             val structureVMList: MutableList<StructureViewModel> = mutableListOf()
+//             // Store structures in container ViewModels:
+//             for (structure in structureSet) {
+//                 structureVMList.add(StructureViewModel(structure))
+//             }
+//             // Store the ViewModels:
+//             structureVMs.emit(structureVMList)
+//
+//             // If a structure isn't selected yet, select the first structure from the list:
+//             if (selectedStructureVM.value == null && structureVMList.isNotEmpty())
+//                 selectedStructureVM.emit(structureVMList.first())
+//
+//         }
     }
 
     fun showCandidates() {

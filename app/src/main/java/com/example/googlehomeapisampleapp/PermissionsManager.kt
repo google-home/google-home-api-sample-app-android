@@ -57,13 +57,14 @@ class PermissionsManager(val context: Context, val scope: CoroutineScope, val ac
     fun requestPermissions() {
         scope.launch {
             try {
-                // Request permissions from the Permissions API and record the result:
-                val result: PermissionsResult = client.requestPermissions(forceLaunch = true)
-                // Adjust the sign-in status according to permission result:
-                if (result.status == PermissionsResultStatus.SUCCESS)
-                    isSignedIn.emit(true)
-                // Report the permission result:
-                reportPermissionResult(result)
+// TODO: 4.3.1 - Request the permissions from the Permissions API
+//                 // Request permissions from the Permissions API and record the result:
+//                 val result: PermissionsResult = client.requestPermissions(forceLaunch = true)
+//                 // Adjust the sign-in status according to permission result:
+//                 if (result.status == PermissionsResultStatus.SUCCESS)
+//                     isSignedIn.emit(true)
+//                 // Report the permission result:
+//                 reportPermissionResult(result)
             }
             catch (e: HomeException) { MainActivity.showError(this, e.message.toString()) }
         }
