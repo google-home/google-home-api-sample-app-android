@@ -104,19 +104,20 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedDeviceSelection, onDismissRequest = { expandedDeviceSelection = false }) {
-                        for (deviceVM in deviceVMs) {
-                            DropdownMenuItem(
-                                text = { Text(deviceVM.name) },
-                                onClick = {
-                                    scope.launch {
-                                        actionDeviceVM.value = deviceVM
-                                        actionTrait.value = null
-                                        actionAction.value = null
-                                    }
-                                    expandedDeviceSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.2.1 - Action devices selection dropdown
+//                         for (deviceVM in deviceVMs) {
+//                             DropdownMenuItem(
+//                                 text = { Text(deviceVM.name) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         actionDeviceVM.value = deviceVM
+//                                         actionTrait.value = null
+//                                         actionAction.value = null
+//                                     }
+//                                     expandedDeviceSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
@@ -132,19 +133,20 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedTraitSelection, onDismissRequest = { expandedTraitSelection = false }) {
-                        val deviceTraits: List<Trait> = actionDeviceVM.value?.traits?.collectAsState()?.value!!
-                        for (trait in deviceTraits) {
-                            DropdownMenuItem(
-                                text = { Text(trait.factory.toString()) },
-                                onClick = {
-                                    scope.launch {
-                                        actionTrait.value = trait
-                                        actionAction.value = null
-                                    }
-                                    expandedTraitSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.2.2 - Action device traits selection dropdown
+//                         val deviceTraits: List<Trait> = actionDeviceVM.value?.traits?.collectAsState()?.value!!
+//                         for (trait in deviceTraits) {
+//                             DropdownMenuItem(
+//                                 text = { Text(trait.factory.toString()) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         actionTrait.value = trait
+//                                         actionAction.value = null
+//                                     }
+//                                     expandedTraitSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
@@ -163,36 +165,36 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
                         // ...
                         if (!ActionViewModel.actionActions.containsKey(actionTrait.value?.factory))
                             return@DropdownMenu
-
-                        val actions: List<ActionViewModel.Action> = ActionViewModel.actionActions.get(actionTrait.value?.factory)?.actions!!
-                        for (action in actions) {
-                            DropdownMenuItem(
-                                text = { Text(action.toString()) },
-                                onClick = {
-                                    scope.launch {
-                                        actionAction.value = action
-                                    }
-                                    expandedActionSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.2.3 - Action device trait actions (commands) selection dropdown
+//                         val actions: List<ActionViewModel.Action> = ActionViewModel.actionActions.get(actionTrait.value?.factory)?.actions!!
+//                         for (action in actions) {
+//                             DropdownMenuItem(
+//                                 text = { Text(action.toString()) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         actionAction.value = action
+//                                     }
+//                                     expandedActionSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
 
             when (actionTrait.value?.factory) {
                  LevelControl -> {
-                    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-                        Text(stringResource(R.string.action_title_value), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                        LevelSlider(value = actionValueLevel.value?.toFloat()!!, low = 0f, high = 254f, steps = 0,
-                            modifier = Modifier.padding(top = 16.dp),
-                            onValueChange = { value : Float -> actionValueLevel.value = value.toUInt().toUByte() },
-                            isEnabled = true
-                        )
-                    }
+// TODO: 4.2.4 - Action device trait action(command) values selection widget
+//                     Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+//                         Text(stringResource(R.string.action_title_value), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+//                     }
+//                     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+//                         LevelSlider(value = actionValueLevel.value?.toFloat()!!, low = 0f, high = 254f, steps = 0,
+//                             modifier = Modifier.padding(top = 16.dp),
+//                             onValueChange = { value : Float -> actionValueLevel.value = value.toUInt().toUByte() },
+//                             isEnabled = true
+//                         )
+//                     }
 
                 }
                 else -> {  }
@@ -238,13 +240,14 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
                     enabled = isOptionsSelected,
                     onClick = {
                         scope.launch {
-                            actionVM.deviceVM.emit(actionDeviceVM.value)
-                            actionVM.trait.emit(actionTrait.value)
-                            actionVM.action.emit(actionAction.value)
-                            actionVM.valueLevel.emit(actionValueLevel.value)
-
-                            draftVM.actionVMs.value.add(actionVM)
-                            draftVM.selectedActionVM.emit(null)
+// TODO: 4.2.5 - store all action ViewModel variables into draft ViewModel
+//                             actionVM.deviceVM.emit(actionDeviceVM.value)
+//                             actionVM.trait.emit(actionTrait.value)
+//                             actionVM.action.emit(actionAction.value)
+//                             actionVM.valueLevel.emit(actionValueLevel.value)
+//
+//                             draftVM.actionVMs.value.add(actionVM)
+//                             draftVM.selectedActionVM.emit(null)
                         }
                     })
                 { Text(stringResource(R.string.action_button_create)) }
