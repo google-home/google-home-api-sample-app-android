@@ -25,6 +25,17 @@ import com.google.home.HomeClient
 import com.google.home.HomeConfig
 import com.google.home.Trait
 import com.google.home.TraitFactory
+import com.google.home.google.AreaAttendanceState
+import com.google.home.google.AreaPresenceState
+import com.google.home.google.Assistant
+import com.google.home.google.AssistantBroadcast
+import com.google.home.google.AssistantFulfillment
+import com.google.home.google.GoogleDisplayDevice
+import com.google.home.google.GoogleTVDevice
+import com.google.home.google.Notification
+import com.google.home.google.Time
+import com.google.home.google.Volume
+import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.BooleanState
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.ContactSensorDevice
@@ -39,6 +50,8 @@ import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.OnOffLightSwitchDevice
 import com.google.home.matter.standard.OnOffPluginUnitDevice
 import com.google.home.matter.standard.OnOffSensorDevice
+import com.google.home.matter.standard.RootNodeDevice
+import com.google.home.matter.standard.SpeakerDevice
 import com.google.home.matter.standard.TemperatureControl
 import com.google.home.matter.standard.TemperatureMeasurement
 import com.google.home.matter.standard.Thermostat
@@ -77,28 +90,41 @@ class HomeApp(val context: Context, val scope: CoroutineScope, val activity : Co
     companion object {
         // List of supported device types by this app:
         val supportedTypes: List<DeviceTypeFactory<out DeviceType>> = listOf(
-            OnOffLightDevice,
-            DimmableLightDevice,
+            ContactSensorDevice,
             ColorTemperatureLightDevice,
+            DimmableLightDevice,
             ExtendedColorLightDevice,
             GenericSwitchDevice,
+            GoogleDisplayDevice,
+            GoogleTVDevice,
+            OccupancySensorDevice,
+            OnOffLightDevice,
             OnOffLightSwitchDevice,
             OnOffPluginUnitDevice,
             OnOffSensorDevice,
-            ContactSensorDevice,
-            OccupancySensorDevice,
+            RootNodeDevice,
+            SpeakerDevice,
             ThermostatDevice,
         )
 
         // List of supported device traits by this app:
         val supportedTraits: List<TraitFactory<out Trait>> = listOf(
-            OnOff,
-            LevelControl,
+            AreaAttendanceState,
+            AreaPresenceState,
+            Assistant,
+            AssistantBroadcast,
+            AssistantFulfillment,
+            BasicInformation,
             BooleanState,
             OccupancySensing,
-            Thermostat,
+            OnOff,
+            Notification,
+            LevelControl,
             TemperatureControl,
             TemperatureMeasurement,
+            Thermostat,
+            Time,
+            Volume,
         )
     }
 }
