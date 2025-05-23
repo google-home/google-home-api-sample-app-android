@@ -67,18 +67,19 @@ class CommissioningManager(val context: Context, val scope: CoroutineScope, val 
         // Retrieve the onboarding payload used when commissioning devices:
         val payload = activity.intent?.getStringExtra(Matter.EXTRA_ONBOARDING_PAYLOAD)
 
-        scope.launch {
-            // Create a commissioning request to store the device in Google's Fabric:
-            val request = CommissioningRequest.builder()
-                .setStoreToGoogleFabric(true)
-                .setOnboardingPayload(payload)
-                .build()
-            // Initialize client and sender for commissioning intent:
-            val client: CommissioningClient = Matter.getCommissioningClient(context)
-            val sender: IntentSender = client.commissionDevice(request).await()
-            // Launch the commissioning intent on the launcher:
-            launcher.launch(IntentSenderRequest.Builder(sender).build())
-        }
+// TODO: 7.1.1 - Launch the commissioning intent
+//         scope.launch {
+//             // Create a commissioning request to store the device in Google's Fabric:
+//             val request = CommissioningRequest.builder()
+//                 .setStoreToGoogleFabric(true)
+//                 .setOnboardingPayload(payload)
+//                 .build()
+//             // Initialize client and sender for commissioning intent:
+//             val client: CommissioningClient = Matter.getCommissioningClient(context)
+//             val sender: IntentSender = client.commissionDevice(request).await()
+//             // Launch the commissioning intent on the launcher:
+//             launcher.launch(IntentSenderRequest.Builder(sender).build())
+//         }
     }
 }
 

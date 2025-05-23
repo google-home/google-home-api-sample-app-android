@@ -115,17 +115,19 @@ fun ControlListItem (trait: Trait, type: DeviceType) {
     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         when (trait) {
             is OnOff -> {
-                Column (Modifier.fillMaxWidth()) {
-                    Text(trait.factory.toString(), fontSize = 20.sp)
-                    Text(DeviceViewModel.getTraitStatus(trait, type), fontSize = 16.sp)
-                }
+// TODO: 6.1.3 - Render controls based on the trait type
+//                 Column (Modifier.fillMaxWidth()) {
+//                     Text(trait.factory.toString(), fontSize = 20.sp)
+//                     Text(DeviceViewModel.getTraitStatus(trait, type), fontSize = 16.sp)
+//                 }
 
-                Switch (checked = (trait.onOff == true), modifier = Modifier.align(Alignment.CenterEnd),
-                    onCheckedChange = { state ->
-                        scope.launch { if (state) trait.on() else trait.off() }
-                    },
-                    enabled = isConnected
-                )
+// TODO: 6.2.1 - Render controls based on the trait type
+//                 Switch (checked = (trait.onOff == true), modifier = Modifier.align(Alignment.CenterEnd),
+//                     onCheckedChange = { state ->
+//                         scope.launch { if (state) trait.on() else trait.off() }
+//                     },
+//                     enabled = isConnected
+//                 )
             }
             is LevelControl -> {
                 val level = trait.currentLevel
