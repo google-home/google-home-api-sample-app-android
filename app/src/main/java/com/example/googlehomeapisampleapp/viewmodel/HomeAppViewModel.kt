@@ -116,27 +116,28 @@ class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
                 if(deviceVM.type.value is UnknownDeviceType)
                     continue
 
-                // Retrieve a set of initial automation candidates from the device:
-                val candidates: Set<NodeCandidate> = deviceVM.device.candidates().first()
-
-                for (candidate in candidates) {
-                    // Check whether the candidate trait is supported:
-                    if(candidate.trait !in HomeApp.supportedTraits)
-                        continue
-                    // Check whether the candidate type is supported:
-                    when (candidate) {
-                        // Command candidate type:
-                        is CommandCandidate -> {
-                            // Check whether the command candidate has a supported command:
-                            if (candidate.commandDescriptor !in ActionViewModel.commandMap)
-                                continue
-                        }
-                        // Other candidate types are currently unsupported:
-                        else -> { continue }
-                    }
-
-                    candidateVMList.add(CandidateViewModel(candidate, deviceVM))
-                }
+// TODO: 5.1.1 - Retrieve automation candidates, filtering to include CommandCandidate types only
+//                 // Retrieve a set of initial automation candidates from the device:
+//                 val candidates: Set<NodeCandidate> = deviceVM.device.candidates().first()
+//
+//                 for (candidate in candidates) {
+//                     // Check whether the candidate trait is supported:
+//                     if(candidate.trait !in HomeApp.supportedTraits)
+//                         continue
+//                     // Check whether the candidate type is supported:
+//                     when (candidate) {
+//                         // Command candidate type:
+//                         is CommandCandidate -> {
+//                             // Check whether the command candidate has a supported command:
+//                             if (candidate.commandDescriptor !in ActionViewModel.commandMap)
+//                                 continue
+//                         }
+//                         // Other candidate types are currently unsupported:
+//                         else -> { continue }
+//                     }
+//
+//                     candidateVMList.add(CandidateViewModel(candidate, deviceVM))
+//                 }
             }
 
             // Store the ViewModels:
@@ -150,20 +151,21 @@ class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
             val draft : DraftAutomation = selectedDraftVM.value?.getDraftAutomation()!!
             isPending.value = true
 
-            // Call Automations API to create an automation from a draft:
-            try {
-                structure.createAutomation(draft)
-            }
-            catch (e: Exception) {
-                MainActivity.showError(this, e.toString())
-                isPending.value = false
-                return@launch
-            }
-
-            // Scrap the draft and automation candidates used in the process:
-            selectedCandidateVMs.emit(null)
-            selectedDraftVM.emit(null)
-            isPending.value = false
+//// TODO: 4.4.3 - Call the Home API to create automation and handle exceptions
+//            // Call Automations API to create an automation from a draft:
+//            try {
+//                structure.createAutomation(draft)
+//            }
+//            catch (e: Exception) {
+//                MainActivity.showError(this, e.toString())
+//                isPending.value = false
+//                return@launch
+//            }
+//
+//            // Scrap the draft and automation candidates used in the process:
+//            selectedCandidateVMs.emit(null)
+//            selectedDraftVM.emit(null)
+//            isPending.value = false
         }
     }
 

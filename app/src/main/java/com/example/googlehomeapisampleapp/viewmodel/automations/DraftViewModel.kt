@@ -118,16 +118,17 @@ class DraftViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel()
 
                             when (starterTrait) {
                                 OnOff -> {
-                                    val onOffValue: Boolean = starterVM.valueOnOff.value
-                                    val onOffExpression: TypedExpression<out OnOff> =
-                                        starterExpression as TypedExpression<out OnOff>
-                                    when (starterOperation) {
-                                        StarterViewModel.Operation.EQUALS ->
-                                            condition { expression = onOffExpression.onOff equals onOffValue }
-                                        StarterViewModel.Operation.NOT_EQUALS ->
-                                            condition { expression = onOffExpression.onOff notEquals onOffValue }
-                                        else -> { MainActivity.showError(this, "Unexpected operation for OnOff") }
-                                    }
+// TODO: 4.4.1 - Set starter expressions according to trait type
+//                                     val onOffValue: Boolean = starterVM.valueOnOff.value
+//                                     val onOffExpression: TypedExpression<out OnOff> =
+//                                         starterExpression as TypedExpression<out OnOff>
+//                                     when (starterOperation) {
+//                                         StarterViewModel.Operation.EQUALS ->
+//                                             condition { expression = onOffExpression.onOff equals onOffValue }
+//                                         StarterViewModel.Operation.NOT_EQUALS ->
+//                                             condition { expression = onOffExpression.onOff notEquals onOffValue }
+//                                         else -> { MainActivity.showError(this, "Unexpected operation for OnOff") }
+//                                     }
                                 }
                                 LevelControl -> {
                                     val levelValue: UByte = starterVM.valueLevel.value
@@ -199,14 +200,15 @@ class DraftViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel()
                             val actionCommand: Command = when (actionVM.action.value) {
                                 ActionViewModel.Action.ON -> { OnOff.on() }
                                 ActionViewModel.Action.OFF -> { OnOff.off() }
-                                ActionViewModel.Action.MOVE_TO_LEVEL -> {
-                                    LevelControl.moveToLevelWithOnOff(
-                                        actionVM.valueLevel.value!!,
-                                        0u,
-                                        LevelControlTrait.OptionsBitmap(),
-                                        LevelControlTrait.OptionsBitmap()
-                                    )
-                                }
+// TODO: 4.4.2 - Set starter expressions according to trait type
+//                                 ActionViewModel.Action.MOVE_TO_LEVEL -> {
+//                                     LevelControl.moveToLevelWithOnOff(
+//                                         actionVM.valueLevel.value!!,
+//                                         0u,
+//                                         LevelControlTrait.OptionsBitmap(),
+//                                         LevelControlTrait.OptionsBitmap()
+//                                     )
+//                                 }
                                 ActionViewModel.Action.MODE_HEAT -> { SimplifiedThermostat
                                     .setSystemMode(SimplifiedThermostatTrait.SystemModeEnum.Heat) }
                                 ActionViewModel.Action.MODE_COOL -> { SimplifiedThermostat

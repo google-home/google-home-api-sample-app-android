@@ -130,9 +130,10 @@ class ActionViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel(
 
         // Map of supported commands from Discovery API:
         val commandMap: Map<CommandDescriptor, Action> = mapOf(
-            OnOffTrait.OnCommand to Action.ON,
-            OnOffTrait.OffCommand to Action.OFF,
-            LevelControlTrait.MoveToLevelWithOnOffCommand to Action.MOVE_TO_LEVEL
+// TODO: 5.1.2 - Set current supported commands
+//             OnOffTrait.OnCommand to Action.ON,
+//             OnOffTrait.OffCommand to Action.OFF,
+//             LevelControlTrait.MoveToLevelWithOnOffCommand to Action.MOVE_TO_LEVEL
         )
     }
 }

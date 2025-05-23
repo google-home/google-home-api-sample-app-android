@@ -113,10 +113,12 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
         Column {
             Spacer(Modifier.height(64.dp))
 
+            // Render title
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
                 Text(text = stringResource(R.string.starter_title_select), fontSize = 32.sp)
             }
 
+            // Render device types
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                 Text(stringResource(R.string.starter_title_device), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -128,24 +130,26 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedDeviceSelection, onDismissRequest = { expandedDeviceSelection = false }) {
-                        for (deviceVM in deviceVMs) {
-                            DropdownMenuItem(
-                                text = { Text(deviceVM.name) },
-                                onClick = {
-                                    scope.launch {
-                                        starterDeviceVM.value = deviceVM
-                                        starterType.value = deviceVM.type.value
-                                        starterTrait.value = null
-                                        starterOperation.value = null
-                                    }
-                                    expandedDeviceSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.1.1 - Starter devices selection dropdown
+//                         for (deviceVM in deviceVMs) {
+//                             DropdownMenuItem(
+//                                 text = { Text(deviceVM.name) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         starterDeviceVM.value = deviceVM
+//                                         starterType.value = deviceVM.type.value
+//                                         starterTrait.value = null
+//                                         starterOperation.value = null
+//                                     }
+//                                     expandedDeviceSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
 
+            // Render device traits
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                 Text(stringResource(R.string.starter_title_trait), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -157,23 +161,25 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedTraitSelection, onDismissRequest = { expandedTraitSelection = false }) {
-                        val deviceTraits = starterDeviceVM.value?.traits?.collectAsState()?.value!!
-                        for (trait in deviceTraits) {
-                            DropdownMenuItem(
-                                text = { Text(trait.factory.toString()) },
-                                onClick = {
-                                    scope.launch {
-                                        starterTrait.value = trait.factory
-                                        starterOperation.value = null
-                                    }
-                                    expandedTraitSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.1.2 - Starter device traits selection dropdown
+//                         val deviceTraits = starterDeviceVM.value?.traits?.collectAsState()?.value!!
+//                         for (trait in deviceTraits) {
+//                             DropdownMenuItem(
+//                                 text = { Text(trait.factory.toString()) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         starterTrait.value = trait.factory
+//                                         starterOperation.value = null
+//                                     }
+//                                     expandedTraitSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
 
+            // Render operation
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                 Text(stringResource(R.string.starter_title_operation), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -188,23 +194,24 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
                         // ...
                         if (!StarterViewModel.starterOperations.containsKey(starterTrait.value))
                             return@DropdownMenu
-
-                        val operations: List<StarterViewModel.Operation> = StarterViewModel.starterOperations.get(starterTrait.value ?: OnOff)?.operations!!
-                        for (operation in operations) {
-                            DropdownMenuItem(
-                                text = { Text(operation.toString()) },
-                                onClick = {
-                                    scope.launch {
-                                        starterOperation.value = operation
-                                    }
-                                    expandedOperationSelection = false
-                                }
-                            )
-                        }
+// TODO: 4.1.3 - Starter device trait operations selection dropdown
+//                         val operations: List<StarterViewModel.Operation> = StarterViewModel.starterOperations.get(starterTrait.value ?: OnOff)?.operations!!
+//                         for (operation in operations) {
+//                             DropdownMenuItem(
+//                                 text = { Text(operation.toString()) },
+//                                 onClick = {
+//                                     scope.launch {
+//                                         starterOperation.value = operation
+//                                     }
+//                                     expandedOperationSelection = false
+//                                 }
+//                             )
+//                         }
                     }
                 }
             }
 
+            // Render value
             if (starterTrait.value != null) {
                 Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                     Text(stringResource(R.string.starter_title_value), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -221,17 +228,18 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
                     Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                         Box {
                             DropdownMenu(expanded = expandedBooleanSelection, onDismissRequest = { expandedBooleanSelection = false }) {
-                                for (value in StarterViewModel.valuesOnOff.keys) {
-                                    DropdownMenuItem(
-                                        text = { Text(value.toString()) },
-                                        onClick = {
-                                            scope.launch {
-                                                starterValueOnOff.value = StarterViewModel.valuesOnOff.get(value)
-                                            }
-                                            expandedBooleanSelection = false
-                                        }
-                                    )
-                                }
+// TODO: 4.1.4 - Starter device trait values selection dropdown
+//                                 for (value in StarterViewModel.valuesOnOff.keys) {
+//                                     DropdownMenuItem(
+//                                         text = { Text(value.toString()) },
+//                                         onClick = {
+//                                             scope.launch {
+//                                                 starterValueOnOff.value = StarterViewModel.valuesOnOff.get(value)
+//                                             }
+//                                             expandedBooleanSelection = false
+//                                         }
+//                                     )
+//                                 }
                             }
                         }
                     }
@@ -284,17 +292,18 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
                     Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                         Box {
                             DropdownMenu(expanded = expandedOccupancySelection, onDismissRequest = { expandedOccupancySelection = false }) {
-                                for (value in StarterViewModel.valuesOccupancy.keys) {
-                                    DropdownMenuItem(
-                                        text = { Text(value.toString()) },
-                                        onClick = {
-                                            scope.launch {
-                                                starterValueOccupancy.value = StarterViewModel.valuesOccupancy.get(value)
-                                            }
-                                            expandedOccupancySelection = false
-                                        }
-                                    )
-                                }
+// TODO: 6.1.2 - Implement Occupancy starter device trait values selection dropdown
+//                                 for (value in StarterViewModel.valuesOccupancy.keys) {
+//                                     DropdownMenuItem(
+//                                         text = { Text(value.toString()) },
+//                                         onClick = {
+//                                             scope.launch {
+//                                                 starterValueOccupancy.value = StarterViewModel.valuesOccupancy.get(value)
+//                                             }
+//                                             expandedOccupancySelection = false
+//                                         }
+//                                     )
+//                                 }
                             }
                         }
                     }
@@ -372,14 +381,15 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
                     enabled = isOptionsSelected && isValueProvided,
                     onClick = {
                         scope.launch {
-                            starterVM.deviceVM.emit(starterDeviceVM.value)
-                            starterVM.trait.emit(starterTrait.value)
-                            starterVM.operation.emit(starterOperation.value)
-                            starterVM.valueOnOff.emit(starterValueOnOff.value!!)
-                            starterVM.valueLevel.emit(starterValueLevel.value!!)
-                            starterVM.valueBooleanState.emit(starterValueBooleanState.value!!)
-                            starterVM.valueOccupancy.emit(starterValueOccupancy.value!!)
-                            starterVM.valueThermostat.emit(starterValueThermostat.value!!)
+// TODO: 4.1.5 - store all starter ViewModel variables into draft ViewModel
+//                             starterVM.deviceVM.emit(starterDeviceVM.value)
+//                             starterVM.trait.emit(starterTrait.value)
+//                             starterVM.operation.emit(starterOperation.value)
+//                             starterVM.valueOnOff.emit(starterValueOnOff.value!!)
+//                             starterVM.valueLevel.emit(starterValueLevel.value!!)
+//                             starterVM.valueBooleanState.emit(starterValueBooleanState.value!!)
+//                             starterVM.valueOccupancy.emit(starterValueOccupancy.value!!)
+//                             starterVM.valueThermostat.emit(starterValueThermostat.value!!)
 
                             draftVM.starterVMs.value.add(starterVM)
                             draftVM.selectedStarterVM.emit(null)
