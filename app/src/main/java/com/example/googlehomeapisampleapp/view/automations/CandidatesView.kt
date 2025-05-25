@@ -113,7 +113,8 @@ fun CandidateListItem (candidateVM: CandidateViewModel, homeAppVM: HomeAppViewMo
 
     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         Column (Modifier.fillMaxWidth().clickable {
-            scope.launch { homeAppVM.selectedDraftVM.emit(DraftViewModel(candidateVM)) }
+// TODO: 5.2.1 - Set the selectedDraftVM to the selected candidate
+//             scope.launch { homeAppVM.selectedDraftVM.emit(DraftViewModel(candidateVM)) }
         }) {
             Text(candidateVM.name, fontSize = 20.sp)
             Text(candidateVM.description, fontSize = 16.sp)
