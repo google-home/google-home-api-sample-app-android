@@ -53,35 +53,37 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
     }
 
     private suspend fun subscribeToRooms() {
-        // Subscribe to changes on rooms:
-        structure.rooms().collect { roomSet ->
-            val roomVMs = mutableListOf<RoomViewModel>()
-            // Store rooms in container ViewModels:
-            for (room in roomSet) {
-                roomVMs.add(RoomViewModel(room))
-            }
-            // Store the ViewModels:
-            this.roomVMs.emit(roomVMs)
-        }
+// TODO: 5.2.1 - Subscribe the room data changes
+//         // Subscribe to changes on rooms:
+//         structure.rooms().collect { roomSet ->
+//             val roomVMs = mutableListOf<RoomViewModel>()
+//             // Store rooms in container ViewModels:
+//             for (room in roomSet) {
+//                 roomVMs.add(RoomViewModel(room))
+//             }
+//             // Store the ViewModels:
+//             this.roomVMs.emit(roomVMs)
+//         }
     }
 
     private suspend fun subscribeToDevices() {
-        // Subscribe to changes on devices:
-        structure.devices().collect { deviceSet ->
-            val deviceVMs = mutableListOf<DeviceViewModel>()
-            val deviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
-            // Store devices in container ViewModels:
-            for (device in deviceSet) {
-                val deviceVM = DeviceViewModel(device)
-                deviceVMs.add(deviceVM)
-                // For any device that's not in a room, additionally keep track of a separate list:
-                if (!device.isInRoom)
-                    deviceWithoutRoomVMs.add(deviceVM)
-            }
-            // Store the ViewModels:
-            this.deviceVMs.emit(deviceVMs)
-            deviceVMsWithoutRooms.emit(deviceWithoutRoomVMs)
-        }
+// TODO: 5.2.2 - Subscribe the device data changes in a structure
+//         // Subscribe to changes on devices:
+//         structure.devices().collect { deviceSet ->
+//             val deviceVMs = mutableListOf<DeviceViewModel>()
+//             val deviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
+//             // Store devices in container ViewModels:
+//             for (device in deviceSet) {
+//                 val deviceVM = DeviceViewModel(device)
+//                 deviceVMs.add(deviceVM)
+//                 // For any device that's not in a room, additionally keep track of a separate list:
+//                 if (!device.isInRoom)
+//                     deviceWithoutRoomVMs.add(deviceVM)
+//             }
+//             // Store the ViewModels:
+//             this.deviceVMs.emit(deviceVMs)
+//             deviceVMsWithoutRooms.emit(deviceWithoutRoomVMs)
+//         }
     }
 
     private suspend fun subscribeToAutomations() {
