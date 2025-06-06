@@ -110,7 +110,8 @@ fun ControlListItem (trait: Trait, type: DeviceType) {
     val scope: CoroutineScope = rememberCoroutineScope()
 
     val isConnected : Boolean =
-        type.metadata.sourceConnectivity.connectivityState == ConnectivityState.ONLINE
+        type.metadata.sourceConnectivity.connectivityState == ConnectivityState.ONLINE ||
+                type.metadata.sourceConnectivity.connectivityState == ConnectivityState.PARTIALLY_ONLINE
 
     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         when (trait) {

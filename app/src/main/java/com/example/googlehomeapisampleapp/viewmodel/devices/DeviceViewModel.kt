@@ -153,7 +153,8 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
             val targetTrait: TraitFactory<out Trait>? = statusMap.get(type.factory)
 
-            if (type.metadata.sourceConnectivity.connectivityState != ConnectivityState.ONLINE)
+            if (type.metadata.sourceConnectivity.connectivityState != ConnectivityState.ONLINE &&
+                type.metadata.sourceConnectivity.connectivityState != ConnectivityState.PARTIALLY_ONLINE)
                 return "Offline"
 
             if (targetTrait == null)
