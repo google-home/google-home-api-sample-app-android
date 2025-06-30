@@ -16,6 +16,8 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.view.automations
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.googlehomeapisampleapp.BuildConfig
 import com.example.googlehomeapisampleapp.R
 import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
@@ -65,8 +69,49 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AutomationsAccountButton (homeAppVM: HomeAppViewModel) {
-    IconButton(onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions() }, Modifier.size(48.dp).background(Color.Transparent)) {
-        Icon(Icons.Default.AccountCircle, "", Modifier.fillMaxSize(), tint = MaterialTheme.colorScheme.primary)
+    var expanded by remember { mutableStateOf(false) }
+    /**
+     * UI Row containing:
+     * - Account Icon Button: triggers a permission request using PermissionsManager.
+     * - Overflow Menu: opens a dropdown with a "Revoke Permissions" option.
+     *
+     * Selecting "Revoke Permissions" launches an intent to Google’s account management
+     * page for manually revoking app access.
+     *
+     */
+    Row {
+        IconButton(
+            onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions() },
+            modifier = Modifier.size(48.dp).background(Color.Transparent)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = "",
+                modifier = Modifier.fillMaxSize(),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Revoke Permissions") },
+                onClick = {
+                    expanded = false
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://myaccount.google.com/connections/link?project_number=${BuildConfig.GOOGLE_CLOUD_PROJECT_ID}")
+                    )
+                    homeAppVM.homeApp.context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            )
+        }
     }
 }
 

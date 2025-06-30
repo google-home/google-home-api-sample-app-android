@@ -12,8 +12,10 @@ android {
         applicationId = "com.example.googlehomeapisampleapp"
         minSdk = 29
         targetSdk = 34
-        versionCode = 31
-        versionName = "0.2.11"
+        versionCode = 32
+        versionName = "0.2.12"
+        // Google Cloud Project ID used for authentication and Home API access
+        buildConfigField("String", "GOOGLE_CLOUD_PROJECT_ID", "\"449111297489\"")
     }
 
     buildTypes {
@@ -34,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -50,4 +53,5 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     // Home API SDK dependency:
     implementation(libs.play.services.home)
+    implementation("com.google.android.gms:play-services-home-types:17.0.0")
 }

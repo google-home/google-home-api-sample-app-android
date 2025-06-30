@@ -44,6 +44,8 @@ import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewMod
 import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.StarterViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 
 
 @Composable
@@ -59,6 +61,20 @@ fun HomeAppView (homeAppVM: HomeAppViewModel) {
     val selectedDraftVM: DraftViewModel? by homeAppVM.selectedDraftVM.collectAsState()
     val selectedStarterVM: StarterViewModel? = selectedDraftVM?.selectedStarterVM?.collectAsState()?.value
     val selectedActionVM: ActionViewModel? = selectedDraftVM?.selectedActionVM?.collectAsState()?.value
+
+    /**
+     * Periodically refreshes permissions while the user is signed in.
+     *
+     * This loop helps ensure that permission state remains accurate in case
+     * it changes outside the app(e.g., in Google Home or system settings).
+     */
+    LaunchedEffect(isSignedIn) {
+        while (homeAppVM.homeApp.permissionsManager.isSignedIn.value) {
+            homeAppVM.homeApp.permissionsManager.refreshPermissions()
+            delay(2000)
+        }
+    }
+
 
     // Apply theme on the top-level view:
     GoogleHomeAPISampleAppTheme {
