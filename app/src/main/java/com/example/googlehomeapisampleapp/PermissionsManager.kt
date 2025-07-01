@@ -54,6 +54,18 @@ class PermissionsManager(val context: Context, val scope: CoroutineScope, val ac
         }
     }
 
+    /**
+     * Public wrapper for checkPermissions().
+     *
+     *
+     * This function should be used by external components (e.g., UI layers) to refresh
+     * the permission state. Directly calling checkPermissions() is discouraged to maintain
+     * encapsulation and allow future flexibility.
+     */
+    fun refreshPermissions() {
+        checkPermissions()
+    }
+
     fun requestPermissions() {
         scope.launch {
             try {
