@@ -122,15 +122,17 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
             }
 
             TextButton(onClick = { expandedDeviceSelection = true }) {
-                Text(text = (starterDeviceVM.value?.name ?: stringResource(R.string.starter_text_select)) + " ▾", fontSize = 32.sp)
+                val selectedDeviceName = starterDeviceVM.value?.name?.collectAsState()?.value
+                Text(text = (selectedDeviceName ?: stringResource(R.string.starter_text_select)) + " ▾", fontSize = 32.sp)
             }
 
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedDeviceSelection, onDismissRequest = { expandedDeviceSelection = false }) {
                         for (deviceVM in deviceVMs) {
+                            val deviceName by deviceVM.name.collectAsState()
                             DropdownMenuItem(
-                                text = { Text(deviceVM.name) },
+                                text = { Text(deviceName) },
                                 onClick = {
                                     scope.launch {
                                         starterDeviceVM.value = deviceVM
@@ -239,9 +241,9 @@ fun StarterView (homeAppVM: HomeAppViewModel) {
                 LevelControl -> {
                     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
                         LevelSlider(value = starterValueLevel.value?.toFloat()!!, low = 0f, high = 254f, steps = 0,
-                            modifier = Modifier.padding(top = 16.dp),
-                            onValueChange = { value : Float -> starterValueLevel.value = value.toUInt().toUByte() },
-                            isEnabled = true
+                                    modifier = Modifier.padding(top = 16.dp),
+                                    onValueChangeFinished = { value : Float -> starterValueLevel.value = value.toUInt().toUByte() },
+                                    isEnabled = true
                         )
                     }
                 }

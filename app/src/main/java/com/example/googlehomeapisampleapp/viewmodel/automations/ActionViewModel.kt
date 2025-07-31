@@ -30,7 +30,8 @@ import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.OnOffTrait
 import com.google.home.matter.standard.Thermostat
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 
 class ActionViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel() {
@@ -94,7 +95,8 @@ class ActionViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel(
         viewModelScope.launch {
             val candidate: CommandCandidate = candidateVM.candidate as CommandCandidate
             deviceVM.emit(candidateVM.deviceVM)
-            trait.emit(candidateVM.deviceVM?.device?.trait(candidate.trait)?.first())
+            val candidateTrait = candidateVM.deviceVM?.traits?.mapNotNull { allDeviceTraits -> allDeviceTraits.firstOrNull() }
+            trait.emit(candidateTrait?.firstOrNull())
             action.emit(commandMap.get(candidate.commandDescriptor))
         }
     }

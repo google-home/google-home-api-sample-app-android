@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.googlehomeapisampleapp"
         minSdk = 29
         targetSdk = 34
-        versionCode = 32
-        versionName = "0.2.12"
+        versionCode = 33
+        versionName = "1.4.0"
         // Google Cloud Project ID used for authentication and Home API access
         buildConfigField("String", "GOOGLE_CLOUD_PROJECT_ID", "\"449111297489\"")
     }

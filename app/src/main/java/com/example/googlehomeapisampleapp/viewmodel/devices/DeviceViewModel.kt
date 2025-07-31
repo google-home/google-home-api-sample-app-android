@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.viewmodel.devices
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.HomeApp
@@ -43,23 +44,30 @@ import com.google.home.matter.standard.OnOffSensorDevice
 import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatDevice
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow 
 import kotlinx.coroutines.launch
+import com.google.home.DecommissionIneligibleReason
+import com.google.home.DecommissionEligibility
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
     var id : String
-    var name : String
+    val name = MutableStateFlow(device.name)
     var connectivity: ConnectivityState
 
     val type : MutableStateFlow<DeviceType>
     val traits : MutableStateFlow<List<Trait>>
     val typeName : MutableStateFlow<String>
     val status : MutableStateFlow<String>
+    private val _uiEventFlow = MutableSharedFlow<UiEvent>()
+    val uiEventFlow: SharedFlow<UiEvent> = _uiEventFlow
 
     init {
         // Initialize permanent values for a device:
         id = device.id.id
-        name = device.name
         // Initialize the connectivity state:
         connectivity = device.sourceConnectivity.connectivityState
 
@@ -71,6 +79,61 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
         // Subscribe to changes on dynamic values:
         viewModelScope.launch { subscribeToType() }
+    }
+    /**
+    * Renames the device both locally and reflects it in the UI.
+    * - Calls `setName()` to update the HomeDevice object
+    * - Emits the new name to `name` state flow so the UI updates reactively
+    */
+    fun rename(newName: String) {
+        viewModelScope.launch {
+            try {
+                device.setName(newName)
+                name.emit(newName)
+            } catch (e: Exception) {
+                Log.e("DeviceViewModel", "Error renaming device: ${e.message}")
+                
+                // Emit UI event to show error toast
+                _uiEventFlow.emit(UiEvent.ShowToast("Failed to rename device. Please try again."))
+            }
+        }
+    }
+
+    fun deleteDevice() {
+        viewModelScope.launch {
+            try {
+                val eligibility = device.checkDecommissionEligibility()
+                if (eligibility is DecommissionEligibility.Eligible || eligibility is DecommissionEligibility.EligibleWithSideEffects) {
+                    device.decommissionDevice()
+                    _uiEventFlow.emit(UiEvent.ShowToast("Device deleted successfully."))
+                    delay(500)
+                    _uiEventFlow.emit(UiEvent.NavigateBack)
+                } else {
+                    _uiEventFlow.emit(UiEvent.ShowToast("This device cannot be deleted. It is not eligible for decommissioning."))
+                }
+            } catch (e: Exception) {
+                Log.e("DeviceViewModel", "Error deleting device: ${e.message}")
+                _uiEventFlow.emit(UiEvent.ShowToast("Error deleting device: ${e.message}"))
+            }
+        }
+    }
+
+    fun checkDecommissionEligibility() {
+        viewModelScope.launch {
+            try {
+                val eligibility = device.checkDecommissionEligibility()
+                if (eligibility is DecommissionEligibility.Ineligible) {
+                    _uiEventFlow.emit(
+                        UiEvent.ShowToast("This device cannot be deleted. It is not eligible for decommissioning.")
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("DeviceViewModel", "Failed to fetch decommission eligibility: ${e.message}")
+                _uiEventFlow.emit(
+                    UiEvent.ShowToast("Error fetching eligibility: ${e.localizedMessage}")
+                )
+            }
+        }
     }
 
     private suspend fun subscribeToType() {
@@ -192,6 +255,10 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             }
             return status
         }
+    }
+    sealed class UiEvent {
+        data class ShowToast(val message: String) : UiEvent()
+        object NavigateBack : UiEvent()
     }
 
 }
