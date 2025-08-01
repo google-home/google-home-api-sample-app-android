@@ -35,6 +35,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -154,7 +155,8 @@ fun DraftStarterItem (starterVM: StarterViewModel, draftVM: DraftViewModel) {
         Column (Modifier.fillMaxWidth().clickable {
             scope.launch { draftVM.selectedStarterVM.emit(starterVM) }
         }) {
-            Text(starterDeviceVM.name, fontSize = 20.sp)
+            val starterName by starterDeviceVM.name.collectAsState()
+            Text(starterName, fontSize = 20.sp)
             Text(starterTrait.toString(), fontSize = 16.sp)
         }
     }
@@ -196,8 +198,8 @@ fun DraftActionItem (actionVM: ActionViewModel, draftVM: DraftViewModel) {
     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         Column (Modifier.fillMaxWidth().clickable {
             scope.launch { draftVM.selectedActionVM.emit(actionVM) }
-        }) {
-            Text(actionDeviceVM.name, fontSize = 20.sp)
+        }) {val actionName by actionDeviceVM.name.collectAsState()
+            Text(actionName, fontSize = 20.sp)
             Text(actionTrait?.factory.toString(), fontSize = 16.sp)
         }
     }

@@ -37,7 +37,7 @@ class CandidateViewModel (val candidate: NodeCandidate, val deviceVM: DeviceView
         id = candidate.entity.id.id
 
         if (candidate is CommandCandidate) {
-            name = deviceVM!!.name + " - " + ActionViewModel.commandMap.get(candidate.commandDescriptor).toString()
+            name = deviceVM!!.name.value + " - " + ActionViewModel.commandMap.get(candidate.commandDescriptor).toString()
             description = "CommandCandidate"
             type = CandidateType.CommandCandidate
         } else {

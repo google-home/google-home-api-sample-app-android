@@ -75,7 +75,7 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
                 val deviceVM = DeviceViewModel(device)
                 deviceVMs.add(deviceVM)
                 // For any device that's not in a room, additionally keep track of a separate list:
-                if (!device.isInRoom)
+                if (device.roomId == null)
                     deviceWithoutRoomVMs.add(deviceVM)
             }
             // Store the ViewModels:

@@ -66,9 +66,11 @@ import com.example.googlehomeapisampleapp.BuildConfig
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun DevicesAccountButton (homeAppVM: HomeAppViewModel) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     /**
      * UI Row containing:
@@ -105,7 +107,7 @@ fun DevicesAccountButton (homeAppVM: HomeAppViewModel) {
                         Intent.ACTION_VIEW,
                         Uri.parse("https://myaccount.google.com/connections/link?project_number=${BuildConfig.GOOGLE_CLOUD_PROJECT_ID}")
                     )
-                    homeAppVM.homeApp.context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
                 }
             )
@@ -175,10 +177,11 @@ fun DevicesView (homeAppVM: HomeAppViewModel) {
 fun DeviceListItem (deviceVM: DeviceViewModel, homeAppVM: HomeAppViewModel) {
     val scope: CoroutineScope = rememberCoroutineScope()
     val deviceStatus: String = deviceVM.status.collectAsState().value
+    val deviceName: String = deviceVM.name.collectAsState().value
 
     Column (Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth()
         .clickable { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } }) {
-        Text(deviceVM.name, fontSize = 20.sp)
+        Text(deviceName, fontSize = 20.sp)
         Text(deviceStatus, fontSize = 16.sp)
     }
 }

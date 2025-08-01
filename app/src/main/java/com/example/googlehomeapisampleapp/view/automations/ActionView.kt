@@ -98,15 +98,17 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
             }
 
             TextButton(onClick = { expandedDeviceSelection = true }) {
-                Text(text = (actionDeviceVM.value?.name ?: stringResource(R.string.action_text_select)) + " ▾", fontSize = 32.sp)
+                val name = actionDeviceVM.value?.name?.collectAsState()?.value ?: stringResource(R.string.action_text_select)
+                Text(text = "$name ", fontSize = 32.sp)
             }
 
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.fillMaxWidth()) {
                 Box {
                     DropdownMenu(expanded = expandedDeviceSelection, onDismissRequest = { expandedDeviceSelection = false }) {
                         for (deviceVM in deviceVMs) {
+                            val name by deviceVM.name.collectAsState()
                             DropdownMenuItem(
-                                text = { Text(deviceVM.name) },
+                                text = { Text(name) },
                                 onClick = {
                                     scope.launch {
                                         actionDeviceVM.value = deviceVM
@@ -188,9 +190,9 @@ fun ActionView (homeAppVM: HomeAppViewModel) {
 
                     Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
                         LevelSlider(value = actionValueLevel.value?.toFloat()!!, low = 0f, high = 254f, steps = 0,
-                            modifier = Modifier.padding(top = 16.dp),
-                            onValueChange = { value : Float -> actionValueLevel.value = value.toUInt().toUByte() },
-                            isEnabled = true
+                                    modifier = Modifier.padding(top = 16.dp),
+                                    onValueChangeFinished = { value : Float -> actionValueLevel.value = value.toUInt().toUByte() },
+                                    isEnabled = true
                         )
                     }
 
