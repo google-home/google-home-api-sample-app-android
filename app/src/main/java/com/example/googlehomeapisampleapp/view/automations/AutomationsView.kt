@@ -56,7 +56,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.googlehomeapisampleapp.BuildConfig
 import com.example.googlehomeapisampleapp.R
 import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
@@ -106,7 +105,7 @@ fun AutomationsAccountButton (homeAppVM: HomeAppViewModel) {
                     expanded = false
                     val intent = Intent(
                         Intent.ACTION_VIEW,
-                        Uri.parse("https://myaccount.google.com/connections/link?project_number=${BuildConfig.GOOGLE_CLOUD_PROJECT_ID}")
+                        Uri.parse("https://myaccount.google.com/u/2/connections?utm_source=3p")
                     )
                     homeAppVM.homeApp.context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }

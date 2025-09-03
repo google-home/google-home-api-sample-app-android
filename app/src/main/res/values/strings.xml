@@ -66,4 +66,6 @@
     <string name="automation_button_execute">Manually Execute</string>
     <string name="automation_button_delete">Delete Automation</string>
 
+    <string name="title_commissioning_activity">3P Commissioning Activity</string>>
+
 </resources>

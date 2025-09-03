@@ -9,6 +9,7 @@ lifecycleRuntimeKtx = "2.8.6"
 activityCompose = "1.9.3"
 composeBom = "2024.04.01"
 navigationCompose = "2.8.3"
+matter-android-demo-sdk = "1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,6 +28,8 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 play-services-home = { module = "com.google.android.gms:play-services-home", version = "17.0.0" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+matter-android-demo-sdk = { module = "com.google.matter:matter-android-demo-sdk", version.ref = "matter-android-demo-sdk" }
+
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
