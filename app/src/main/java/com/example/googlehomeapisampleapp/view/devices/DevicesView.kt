@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,9 +61,12 @@ import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import com.example.googlehomeapisampleapp.BuildConfig
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.platform.LocalContext
 
@@ -105,7 +107,7 @@ fun DevicesAccountButton (homeAppVM: HomeAppViewModel) {
                     expanded = false
                     val intent = Intent(
                         Intent.ACTION_VIEW,
-                        Uri.parse("https://myaccount.google.com/connections/link?project_number=${BuildConfig.GOOGLE_CLOUD_PROJECT_ID}")
+                        Uri.parse("https://myaccount.google.com/u/2/connections?utm_source=3p")
                     )
                     context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
@@ -116,40 +118,69 @@ fun DevicesAccountButton (homeAppVM: HomeAppViewModel) {
 }
 
 @Composable
-fun DevicesView (homeAppVM: HomeAppViewModel) {
+fun DevicesView(
+    homeAppVM: HomeAppViewModel,
+    onRequestCreateRoom: () -> Unit = {},
+    onRequestRoomSettings: (RoomViewModel) -> Unit = {},
+    onRequestMoveDevice: (DeviceViewModel) -> Unit = {}
+) {
     val scope: CoroutineScope = rememberCoroutineScope()
-    var expanded: Boolean by remember { mutableStateOf(false) }
 
     val structureVMs: List<StructureViewModel> = homeAppVM.structureVMs.collectAsState().value
     val selectedStructureVM: StructureViewModel? = homeAppVM.selectedStructureVM.collectAsState().value
     val structureName: String = selectedStructureVM?.name ?: stringResource(R.string.devices_structure_loading)
 
-    Column (modifier = Modifier.fillMaxHeight()) {
-        DevicesTopBar("", listOf { DevicesAccountButton(homeAppVM) })
+    var structurePickerExpanded by remember { mutableStateOf(false) }
+    var plusMenuExpanded by remember { mutableStateOf(false) }
+
+    var isCommissioningMenuVisible by remember { mutableStateOf(false) }
+    var toGoogleOnly: Boolean = false
+
+    Column(modifier = Modifier.fillMaxHeight()) {
+
+        DevicesTopBar(
+            title = "",
+            leftButton = {
+                IconButton(onClick = { plusMenuExpanded = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
+                }
+                DropdownMenu(expanded = plusMenuExpanded, onDismissRequest = { plusMenuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Add Room") },
+                        onClick = {
+                            plusMenuExpanded = false
+                            onRequestCreateRoom()
+                        }
+                    )
+                }
+            },
+            rightButtons = listOf { DevicesAccountButton(homeAppVM) }
+        )
 
         Box (modifier = Modifier.weight(1f)) {
 
             Column {
                 Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    var structureText: String = structureName
-
-                    if (structureVMs.size > 1)
-                        structureText += " ▾"
-
-                    TextButton(onClick = { expanded = true }) {
-                        Text(text = structureText, fontSize = 32.sp)
+                    if (structureVMs.size > 1) {
+                        TextButton(onClick = { structurePickerExpanded = true }) {
+                            Text(text = structureName + " ▾", fontSize = 32.sp)
+                        }
+                    } else {
+                        TextButton(onClick = { structurePickerExpanded = true }) {
+                            Text(text = structureName, fontSize = 32.sp)
+                        }
                     }
                 }
 
-                Row (horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                     Box {
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenu(expanded = structurePickerExpanded, onDismissRequest = { structurePickerExpanded = false }) {
                             for (structure in structureVMs) {
                                 DropdownMenuItem(
                                     text = { Text(structure.name) },
                                     onClick = {
                                         scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
-                                        expanded = false
+                                        structurePickerExpanded = false
                                     }
                                 )
                             }
@@ -158,44 +189,89 @@ fun DevicesView (homeAppVM: HomeAppViewModel) {
                 }
 
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)) {
-                    DeviceListComponent(homeAppVM)
+                    DeviceListComponent(
+                        homeAppVM = homeAppVM,
+                        onRoomClick = onRequestRoomSettings,
+                        onDeviceLongPress = onRequestMoveDevice
+                    )
                 }
             }
 
-            Button(
-                onClick = { homeAppVM.homeApp.commissioningManager.requestCommissioning() },
-                modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) {
-                        Text(stringResource(R.string.devices_button_add)) }
-
+            Box(modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) {
+                Button(onClick = { isCommissioningMenuVisible = true }) {
+                    Text(stringResource(R.string.devices_button_add))
+                }
+                DropdownMenu(
+                    expanded = isCommissioningMenuVisible,
+                    onDismissRequest = { isCommissioningMenuVisible = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Add Device to Google Fabric Only") },
+                        onClick = {
+                            isCommissioningMenuVisible = false
+                            homeAppVM.homeApp.commissioningManager.requestCommissioning(toGoogleOnly = true)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add Device to Google & 3P Fabric") },
+                        onClick = {
+                            isCommissioningMenuVisible = false
+                            homeAppVM.homeApp.commissioningManager.requestCommissioning(toGoogleOnly = false)
+                        }
+                    )
+                }
+            }
         }
 
         TabbedMenuView(homeAppVM)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DeviceListItem (deviceVM: DeviceViewModel, homeAppVM: HomeAppViewModel) {
+fun DeviceListItem(
+    deviceVM: DeviceViewModel,
+    homeAppVM: HomeAppViewModel,
+    onLongPress: (DeviceViewModel) -> Unit
+) {
     val scope: CoroutineScope = rememberCoroutineScope()
     val deviceStatus: String = deviceVM.status.collectAsState().value
     val deviceName: String = deviceVM.name.collectAsState().value
 
-    Column (Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth()
-        .clickable { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } }) {
+    Column(
+        Modifier
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } },
+                onLongClick = { onLongPress(deviceVM) }
+            )
+    ) {
         Text(deviceName, fontSize = 20.sp)
         Text(deviceStatus, fontSize = 16.sp)
     }
 }
 
 @Composable
-fun RoomListItem (roomVM: RoomViewModel) {
-    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-        Text(roomVM.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+fun RoomListItem(roomVM: RoomViewModel, onClick: (RoomViewModel) -> Unit) {
+    val roomName by roomVM.name.collectAsState()
+
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .clickable { onClick(roomVM) }
+    ) {
+        Text(roomName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-fun DeviceListComponent (homeAppVM: HomeAppViewModel) {
-
+fun DeviceListComponent(
+    homeAppVM: HomeAppViewModel,
+    onRoomClick: (RoomViewModel) -> Unit,
+    onDeviceLongPress: (DeviceViewModel) -> Unit
+) {
     val selectedStructureVM: StructureViewModel =
         homeAppVM.selectedStructureVM.collectAsState().value ?: return
 
@@ -205,44 +281,76 @@ fun DeviceListComponent (homeAppVM: HomeAppViewModel) {
     val selectedDeviceVMsWithoutRooms: List<DeviceViewModel> =
         selectedStructureVM.deviceVMsWithoutRooms.collectAsState().value
 
+    Column {
+        for (roomVM in selectedRoomVMs) {
+            RoomListItem(roomVM, onClick = onRoomClick)
 
-    for (roomVM in selectedRoomVMs) {
-        RoomListItem(roomVM)
+            val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
 
-        val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
+            for (deviceVM in deviceVMsInRoom) {
+                DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
+            }
+        }
 
-        for (deviceVM in deviceVMsInRoom) {
-            DeviceListItem(deviceVM, homeAppVM)
+        if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {
+
+            Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+                Text("Not in a room", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            for (deviceVM in selectedDeviceVMsWithoutRooms) {
+                DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
+            }
+
         }
     }
-
-    if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {
-
-        Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-            Text("Not in a room", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        }
-
-        for (deviceVM in selectedDeviceVMsWithoutRooms) {
-            DeviceListItem(deviceVM, homeAppVM)
-        }
-
-    }
-
 }
 
 @Composable
-fun DevicesTopBar (title: String, buttons: List<@Composable () -> Unit>) {
-    Box (Modifier.height(64.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-        Row (Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
+fun DevicesTopBar(
+    title: String,
+    leftButton: (@Composable () -> Unit)? = null,
+    rightButtons: List<@Composable () -> Unit>
+) {
+    Box(
+        Modifier
+            .height(64.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        if (leftButton != null) {
+            Row(
+                Modifier
+                    .height(64.dp)
+                    .fillMaxWidth()
+                    .background(Color.Transparent),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center) {
+                horizontalArrangement = Arrangement.Start
+            ) {
+                leftButton()
+            }
+        }
+
+        Row(
+            Modifier
+                .height(64.dp)
+                .fillMaxWidth()
+                .background(Color.Transparent),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
             Text(title, fontSize = 24.sp)
         }
 
-        Row (Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End) {
-            for (button in buttons) {
+        Row(
+            Modifier
+                .height(64.dp)
+                .fillMaxWidth()
+                .background(Color.Transparent),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End
+        ) {
+            for (button in rightButtons) {
                 button()
             }
         }

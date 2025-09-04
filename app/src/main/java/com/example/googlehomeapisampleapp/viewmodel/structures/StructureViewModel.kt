@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,12 +15,15 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.viewmodel.structures
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.viewmodel.automations.AutomationViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.google.home.Structure
+import com.google.home.createRoom
+import com.google.home.moveDevicesToRoom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -58,7 +60,7 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
             val roomVMs = mutableListOf<RoomViewModel>()
             // Store rooms in container ViewModels:
             for (room in roomSet) {
-                roomVMs.add(RoomViewModel(room))
+                roomVMs.add(RoomViewModel(structure, room))
             }
             // Store the ViewModels:
             this.roomVMs.emit(roomVMs)
@@ -96,4 +98,47 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
             this.automationVMs.emit(automationVMs)
         }
     }
+
+    /**
+     * Create a new room with the given name.
+     * name The name for the new room
+     * IllegalArgumentException if the room name is empty after trimming
+     * Exception if the room creation fails
+     */
+    suspend fun createRoom(name: String) {
+        val roomName = name.trim()
+        if (roomName.isEmpty()) {
+            Log.w(TAG, "Attempted to create room with empty name")
+            throw IllegalArgumentException("The room name cannot be empty.")
+        }
+        try {
+            Log.d(TAG, "Creating room with name: $roomName")
+            structure.createRoom(roomName)
+            Log.d(TAG, "Successfully created room: $roomName")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create room '$roomName': ${e.message}", e)
+            throw e
+        }
+    }
+
+    /**
+     * Move a device to the specified room.
+     * deviceVM The device to move
+     * roomVM The target room
+     * Exception if the move operation fails
+     */
+    suspend fun moveDeviceToRoom(deviceVM: DeviceViewModel, roomVM: RoomViewModel) {
+        try {
+            Log.d(TAG, "Moving device '${deviceVM.device.name}' to room '${roomVM.name}'")
+            structure.moveDevicesToRoom(roomVM.room, listOf(deviceVM.device))
+            Log.d(TAG, "Successfully moved device '${deviceVM.device.name}' to room '${roomVM.name}'")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to move device '${deviceVM.device.name}' to room '${roomVM.name}': ${e.message}", e)
+            throw e
+        }
+    }
+    companion object {
+        private const val TAG = "StructureViewModel"
+    }
 }
+

@@ -47,7 +47,6 @@ class MainActivity : ComponentActivity() {
         setContent { HomeAppView(homeAppVM) }
     }
 
-
     companion object {
         private lateinit var logger: Logger
         // Exposed utility functions for logging and displaying messages:

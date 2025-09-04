@@ -16,6 +16,7 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.IntentSender
 import androidx.activity.ComponentActivity
@@ -23,6 +24,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult
+import com.example.googlehomeapisampleapp.commissioning.ThirdPartyCommissioningService
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.home.matter.Matter
 import com.google.android.gms.home.matter.commissioning.CommissioningClient
@@ -63,16 +65,25 @@ class CommissioningManager(val context: Context, val scope: CoroutineScope, val 
         }
     }
 
-    fun requestCommissioning() {
+    fun requestCommissioning(toGoogleOnly: Boolean) {
         // Retrieve the onboarding payload used when commissioning devices:
         val payload = activity.intent?.getStringExtra(Matter.EXTRA_ONBOARDING_PAYLOAD)
 
         scope.launch {
             // Create a commissioning request to store the device in Google's Fabric:
-            val request = CommissioningRequest.builder()
+            val builder = CommissioningRequest.builder()
                 .setStoreToGoogleFabric(true)
                 .setOnboardingPayload(payload)
-                .build()
+
+            // If not toGoogleOnly, add the custom commissioner service
+            if (!toGoogleOnly) {
+                builder.setCommissioningService(
+                    ComponentName(context, ThirdPartyCommissioningService::class.java)
+                )
+            }
+
+            val request = builder.build()
+
             // Initialize client and sender for commissioning intent:
             val client: CommissioningClient = Matter.getCommissioningClient(context)
             val sender: IntentSender = client.commissionDevice(request).await()

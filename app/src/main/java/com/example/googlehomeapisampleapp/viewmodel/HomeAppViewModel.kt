@@ -27,6 +27,7 @@ import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewMod
 import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
+import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.google.home.Structure
 import com.google.home.automation.CommandCandidate
 import com.google.home.automation.DraftAutomation
@@ -36,7 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
 
 class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
 
@@ -167,4 +168,17 @@ class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
         }
     }
 
+    /** Create a room on the currently selected structure. */
+    fun createRoomInSelectedStructure(name: String): Job = viewModelScope.launch {
+        val vm = selectedStructureVM.value ?: return@launch
+        vm.createRoom(name)
+    }
+
+    /**
+     * Move a device into the given (non-null) room for the selected structure.
+     */
+    fun moveDeviceToRoom(device: DeviceViewModel, room: RoomViewModel): Job = viewModelScope.launch {
+        val vm = selectedStructureVM.value ?: return@launch
+        vm.moveDeviceToRoom(device, room)
+    }
 }

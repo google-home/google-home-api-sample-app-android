@@ -18,16 +18,36 @@ package com.example.googlehomeapisampleapp.view
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.ui.theme.GoogleHomeAPISampleAppTheme
 import com.example.googlehomeapisampleapp.view.automations.ActionView
 import com.example.googlehomeapisampleapp.view.automations.AutomationView
@@ -44,10 +64,11 @@ import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewMod
 import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.StarterViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
-import androidx.compose.runtime.LaunchedEffect
+import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeAppView (homeAppVM: HomeAppViewModel) {
     /** Value tracking whether a user is signed-in on the app **/
@@ -61,6 +82,9 @@ fun HomeAppView (homeAppVM: HomeAppViewModel) {
     val selectedDraftVM: DraftViewModel? by homeAppVM.selectedDraftVM.collectAsState()
     val selectedStarterVM: StarterViewModel? = selectedDraftVM?.selectedStarterVM?.collectAsState()?.value
     val selectedActionVM: ActionViewModel? = selectedDraftVM?.selectedActionVM?.collectAsState()?.value
+    val showCreateRoom = remember { mutableStateOf(false) }
+    val roomSettingsFor = remember { mutableStateOf<RoomViewModel?>(null) }
+    val moveDeviceFor = remember { mutableStateOf<DeviceViewModel?>(null) }
 
     /**
      * Periodically refreshes permissions while the user is signed in.
@@ -125,8 +149,141 @@ fun HomeAppView (homeAppVM: HomeAppViewModel) {
 
                 // If nothing above is selected, then show one of the two main views:
                 when (selectedTab) {
-                    HomeAppViewModel.NavigationTab.DEVICES -> DevicesView(homeAppVM)
+                    HomeAppViewModel.NavigationTab.DEVICES -> DevicesView(
+                        homeAppVM = homeAppVM,
+                        onRequestCreateRoom = { showCreateRoom.value = true },
+                        onRequestRoomSettings = { room -> roomSettingsFor.value = room },
+                        onRequestMoveDevice = { device -> moveDeviceFor.value = device }
+                    )
                     HomeAppViewModel.NavigationTab.AUTOMATIONS -> AutomationsView(homeAppVM)
+                }
+            }
+
+            if (showCreateRoom.value) {
+                var roomName = remember { mutableStateOf("") }
+                AlertDialog(
+                    onDismissRequest = { showCreateRoom.value = false },
+                    title = { Text("Create Room") },
+                    text = {
+                        OutlinedTextField(
+                            value = roomName.value,
+                            onValueChange = { roomName.value = it },
+                            label = { Text("Room name") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val name = roomName.value.trim()
+                            if (name.isNotEmpty()) { homeAppVM.createRoomInSelectedStructure(name) }
+                            showCreateRoom.value = false
+                        }) { Text("Create") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCreateRoom.value = false }) { Text("Cancel") }
+                    }
+                )
+            }
+
+
+            roomSettingsFor.value?.let { activeRoom ->
+                ModalBottomSheet(onDismissRequest = { roomSettingsFor.value = null }) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text("Room settings", modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                homeAppVM.viewModelScope.launch {
+                                    activeRoom.delete()
+                                }
+                                roomSettingsFor.value = null
+                            }) { Text("Delete") }
+                        }
+                        val renameText = remember(activeRoom.id) {
+                            mutableStateOf(activeRoom.name.value)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = renameText.value,
+                                onValueChange = { renameText.value = it },
+                                label = { Text("Room name") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            TextButton(onClick = {
+                                val newName = renameText.value.trim()
+                                if (newName.isNotEmpty() && newName != activeRoom.name.value) {
+                                    homeAppVM.viewModelScope.launch {
+                                        activeRoom.renameRoom(newName)
+                                    }
+                                }
+                                roomSettingsFor.value = null
+                            }) { Text("Save") }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { roomSettingsFor.value = null }) { Text("Close") }
+                    }
+                }
+            }
+
+            moveDeviceFor.value?.let { deviceToMove ->
+                ModalBottomSheet(onDismissRequest = { moveDeviceFor.value = null }) {
+                    val structureVM = homeAppVM.selectedStructureVM.collectAsState().value
+                    val rooms: List<RoomViewModel> =
+                        structureVM?.roomVMs?.collectAsState()?.value ?: emptyList()
+
+                    val expanded = remember { mutableStateOf(false) }
+                    val selectedRoom = remember { mutableStateOf<RoomViewModel?>(null) }
+
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Move \"${deviceToMove.name.collectAsState().value}\" to…")
+                        Spacer(Modifier.height(12.dp))
+
+                        ExposedDropdownMenuBox(
+                            expanded = expanded.value,
+                            onExpandedChange = { expanded.value = !expanded.value }
+                        ) {
+                            TextField(
+                                readOnly = true,
+                                value = selectedRoom.value?.name?.value ?: "Select a room",
+                                onValueChange = {},
+                                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expanded.value,
+                                onDismissRequest = { expanded.value = false }
+                            ) {
+                                rooms.forEach { room ->
+                                    val roomName by room.name.collectAsState()
+                                    DropdownMenuItem(
+                                        text = { Text(roomName) },
+                                        onClick = {
+                                            selectedRoom.value = room
+                                            expanded.value = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                selectedRoom.value?.let { target ->
+                                    homeAppVM.moveDeviceToRoom(deviceToMove, target)
+                                    moveDeviceFor.value = null
+                                }
+                            },
+                            enabled = selectedRoom.value != null,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Move") }
+
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { moveDeviceFor.value = null }) { Text("Close") }
+                    }
                 }
             }
         }
