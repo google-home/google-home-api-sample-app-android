@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,6 +66,7 @@ import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -192,9 +192,7 @@ fun HomeAppView (homeAppVM: HomeAppViewModel) {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Text("Room settings", modifier = Modifier.weight(1f))
                             TextButton(onClick = {
-                                homeAppVM.viewModelScope.launch {
-                                    activeRoom.delete()
-                                }
+                                homeAppVM.deleteRoomFromSelectedStructure(activeRoom)
                                 roomSettingsFor.value = null
                             }) { Text("Delete") }
                         }

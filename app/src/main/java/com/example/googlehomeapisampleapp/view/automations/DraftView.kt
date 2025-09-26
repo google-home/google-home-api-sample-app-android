@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -83,31 +86,50 @@ fun DraftView (homeAppVM: HomeAppViewModel) {
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
                 Text(text = stringResource(R.string.draft_title), fontSize = 32.sp)
             }
-            // Name Input:
+
+            // Name Input - make read-only for locked drafts
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-                TextField(value = draftName, onValueChange = { scope.launch { draftVM.name.emit(it) } }, label = {
-                    Text(text = stringResource(R.string.draft_label_name)) })
+                TextField(
+                    value = draftName,
+                    onValueChange = if (draftVM.isLocked) { {} } else { { scope.launch { draftVM.name.emit(it) } } },
+                    label = { Text(text = stringResource(R.string.draft_label_name)) },
+                    readOnly = draftVM.isLocked,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-            // Description Input:
+
+            // Description Input - make read-only for locked drafts
             Row(horizontalArrangement = Arrangement.Start, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-                TextField(value = draftDescription, onValueChange = { scope.launch { draftVM.description.emit(it) } }, label = {
-                    Text(text = stringResource(R.string.draft_label_description)) })
+                TextField(
+                    value = draftDescription,
+                    onValueChange = if (draftVM.isLocked) { {} } else { { scope.launch { draftVM.description.emit(it) } } },
+                    label = { Text(text = stringResource(R.string.draft_label_description)) },
+                    readOnly = draftVM.isLocked,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             // Spacer:
             Spacer(modifier = Modifier)
-            // Expanding Container:
+
+            // Expanding Container - show read-only preview for locked drafts
             Column(modifier = Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)) {
-                // Draft Starters:
-                DraftStarterList(draftVM)
-                // Draft Actions:
-                DraftActionList(draftVM)
+                if (!draftVM.isLocked) {
+                    // Draft Starters:
+                    DraftStarterList(draftVM)
+                    // Draft Actions:
+                    DraftActionList(draftVM)
+                } else {
+                    // For locked predefined automations, show read-only preview
+                    LockedDraftPreview(draftVM)
+                }
             }
         }
 
         // Button to save the draft automation:
         Row (modifier = Modifier.padding(16.dp).align(Alignment.BottomCenter)) {
             // Check on whether at least a starter and an action are selected:
-            val isOptionsSelected: Boolean = starterVMs.isNotEmpty() && actionVMs.isNotEmpty()
+            val isOptionsSelected: Boolean = if (draftVM.isLocked) true
+            else starterVMs.isNotEmpty() && actionVMs.isNotEmpty()
             // Check on whether a name and description are provided:
             val isValueProvided: Boolean = draftName.isNotBlank() || draftDescription.isNotBlank()
             Button (
@@ -133,12 +155,15 @@ fun DraftStarterList (draftVM: DraftViewModel) {
     for (starterVM in starterVMs)
         DraftStarterItem(starterVM, draftVM)
     // Button to add a new starter:
-    Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-        Column (Modifier.fillMaxWidth().clickable {
-            scope.launch { draftVM.selectedStarterVM.emit(StarterViewModel(null)) }
-        }) {
-            Text(text = stringResource(R.string.draft_new_starter_name), fontSize = 20.sp)
-            Text(text = stringResource(R.string.draft_new_starter_description), fontSize = 16.sp)
+    if (!draftVM.isLocked) {
+        // Button to add a new starter: (original block unchanged)
+        Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            Column (Modifier.fillMaxWidth().clickable {
+                scope.launch { draftVM.selectedStarterVM.emit(StarterViewModel(null)) }
+            }) {
+                Text(text = stringResource(R.string.draft_new_starter_name), fontSize = 20.sp)
+                Text(text = stringResource(R.string.draft_new_starter_description), fontSize = 16.sp)
+            }
         }
     }
 }
@@ -177,12 +202,15 @@ fun DraftActionList (draftVM: DraftViewModel) {
     for (actionVM in actionVMs)
         DraftActionItem(actionVM, draftVM)
     // Button to add a new action:
-    Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-        Column (Modifier.fillMaxWidth().clickable {
-            scope.launch { draftVM.selectedActionVM.emit(ActionViewModel(null)) }
-        }) {
-            Text(text = stringResource(R.string.draft_new_action_name), fontSize = 20.sp)
-            Text(text = stringResource(R.string.draft_new_action_description), fontSize = 16.sp)
+    if (!draftVM.isLocked) {
+        // Button to add a new action
+        Box (Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            Column (Modifier.fillMaxWidth().clickable {
+                scope.launch { draftVM.selectedActionVM.emit(ActionViewModel(null)) }
+            }) {
+                Text(text = stringResource(R.string.draft_new_action_name), fontSize = 20.sp)
+                Text(text = stringResource(R.string.draft_new_action_description), fontSize = 16.sp)
+            }
         }
     }
 }
@@ -202,5 +230,87 @@ fun DraftActionItem (actionVM: ActionViewModel, draftVM: DraftViewModel) {
             Text(actionName, fontSize = 20.sp)
             Text(actionTrait?.factory.toString(), fontSize = 16.sp)
         }
+    }
+}
+
+@Composable
+fun LockedDraftPreview(draftVM: DraftViewModel) {
+    // Extract device names from the description since we're using DSL approach
+    val description = draftVM.description.collectAsState().value
+
+    // Parse the description to extract device names
+    val deviceNames = extractDeviceNamesFromDescription(description)
+    val starterDeviceName = deviceNames.first
+    val actionDeviceName = deviceNames.second
+
+    // Starters Section
+    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+        Text(text = "Starters", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+
+    // Starter preview card
+    Card(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "$starterDeviceName turns OFF",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "OnOffTrait",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    // Actions Section
+    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+        Text(text = "Actions", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    }
+
+    // Action preview card
+    Card(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Turn OFF $actionDeviceName",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "OffCommand",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+// Helper function to extract device names from description
+private fun extractDeviceNamesFromDescription(description: String): Pair<String, String> {
+    val regex = "Turn off (.+) when (.+) turns off".toRegex()
+    val matchResult = regex.find(description)
+
+    return if (matchResult != null) {
+        val actionDevice = matchResult.groupValues[1].trim()
+        val starterDevice = matchResult.groupValues[2].trim()
+        Pair(starterDevice, actionDevice)
+    } else {
+        // Fallback to generic names if parsing fails
+        Pair("First light", "Second light")
     }
 }

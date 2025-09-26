@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +20,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.HomeApp
 import com.example.googlehomeapisampleapp.MainActivity
+import com.example.googlehomeapisampleapp.repository.AutomationsRepository
 import com.example.googlehomeapisampleapp.viewmodel.automations.ActionViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.AutomationViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewModel
@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
 
@@ -174,11 +176,38 @@ class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
         vm.createRoom(name)
     }
 
+    /** Delete a room from the currently selected structure. */
+    fun deleteRoomFromSelectedStructure(roomVM: RoomViewModel): Job = viewModelScope.launch {
+        val structureVM = selectedStructureVM.value ?: return@launch
+        structureVM.deleteRoom(roomVM)
+    }
+
     /**
      * Move a device into the given (non-null) room for the selected structure.
      */
     fun moveDeviceToRoom(device: DeviceViewModel, room: RoomViewModel): Job = viewModelScope.launch {
         val vm = selectedStructureVM.value ?: return@launch
         vm.moveDeviceToRoom(device, room)
+    }
+    /**
+     * Creates and shows a predefined draft for an On/Off light automation.
+     *
+     * This draft requires at least two OnOff-capable lights in the selected structure.
+     * If fewer than two are available, an error message is shown instead.
+     */
+    fun showPredefinedOnOffDraft() {
+        viewModelScope.launch {
+            val structureVM = selectedStructureVM.value ?: return@launch
+            val repository = AutomationsRepository()
+
+            val draftVM = repository.createOnOffLightAutomationDraft(structureVM.deviceVMs.value)
+
+            if (draftVM == null) {
+                MainActivity.showError(this, "Need at least two OnOff-capable lights in this structure.")
+                return@launch
+            }
+
+            selectedDraftVM.emit(draftVM)
+        }
     }
 }

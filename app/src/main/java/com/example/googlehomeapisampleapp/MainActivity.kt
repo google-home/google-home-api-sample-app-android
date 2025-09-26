@@ -25,7 +25,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.example.googlehomeapisampleapp.view.HomeAppView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private lateinit var homeApp: HomeApp
@@ -83,4 +85,3 @@ class Logger (val activity: ComponentActivity) {
             Toast.makeText(activity.baseContext, message, Toast.LENGTH_LONG).show()
     }
 }
-

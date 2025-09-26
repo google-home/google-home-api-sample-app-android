@@ -18,14 +18,7 @@ package com.example.googlehomeapisampleapp.view.automations
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -38,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.googlehomeapisampleapp.R
+import com.example.googlehomeapisampleapp.repository.AutomationsRepository
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
@@ -82,6 +76,15 @@ fun CandidateListComponent (homeAppVM: HomeAppViewModel) {
     }
 
     BlankListItem(homeAppVM)
+    val structureVM = homeAppVM.selectedStructureVM.collectAsState().value
+    val repository = AutomationsRepository()
+    val hasEnoughLights = structureVM?.let {
+        repository.hasEnoughLights(it.deviceVMs.value)
+    } ?: false
+
+    if (hasEnoughLights) {
+        PredefinedListSection(homeAppVM)
+    }
 
     Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
         Text("Candidates", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -103,6 +106,48 @@ fun BlankListItem (homeAppVM: HomeAppViewModel) {
         }) {
             Text(stringResource(R.string.candidate_title_new), fontSize = 20.sp)
             Text(stringResource(R.string.candidate_description_new), fontSize = 16.sp)
+        }
+    }
+}
+
+private data class PredefinedAutomation(
+    val title: String,
+    val description: String,
+    val onClick: suspend (CoroutineScope, HomeAppViewModel) -> Unit
+)
+
+private val predefinedAutomations = listOf(
+    PredefinedAutomation(
+        title = "On/Off Automation",
+        description = "Simple automation that turns off a light when another light is turned off."
+    ) { scope, vm ->
+        scope.launch { vm.showPredefinedOnOffDraft() }
+    }
+    //  In future: window blinds, thermostat, speaker/fan, TV
+)
+
+@Composable
+private fun PredefinedListSection(homeAppVM: HomeAppViewModel) {
+    val scope = rememberCoroutineScope()
+
+    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+        Text("Predefined", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+
+        predefinedAutomations.forEach { automation ->
+            Box(Modifier.padding(horizontal = 9.dp, vertical = 8.dp)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch {
+                                automation.onClick(scope, homeAppVM)
+                            }
+                        }
+                ) {
+                    Text(automation.title, fontSize = 20.sp)
+                    Text(automation.description, fontSize = 16.sp)
+                }
+            }
         }
     }
 }

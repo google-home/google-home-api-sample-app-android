@@ -23,6 +23,7 @@ import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewMod
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.google.home.Structure
 import com.google.home.createRoom
+import com.google.home.deleteRoom
 import com.google.home.moveDevicesToRoom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -122,6 +123,24 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
     }
 
     /**
+     * Delete a room from this structure.
+     * Note: If the room contains devices, they will be unassigned from the room
+     * but will remain in the structure as devices without a room.
+     * roomVM The room to delete
+     * Exception if the delete operation fails
+     */
+    suspend fun deleteRoom(roomVM: RoomViewModel) {
+        try {
+            Log.d(TAG, "Deleting room '${roomVM.name.value}' from structure '$name'")
+            structure.deleteRoom(roomVM.room)
+            Log.d(TAG, "Successfully deleted room '${roomVM.name.value}' from structure '$name'")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete room '${roomVM.name.value}' from structure '$name': ${e.message}", e)
+            throw e
+        }
+    }
+
+    /**
      * Move a device to the specified room.
      * deviceVM The device to move
      * roomVM The target room
@@ -129,11 +148,11 @@ class StructureViewModel (val structure: Structure) : ViewModel() {
      */
     suspend fun moveDeviceToRoom(deviceVM: DeviceViewModel, roomVM: RoomViewModel) {
         try {
-            Log.d(TAG, "Moving device '${deviceVM.device.name}' to room '${roomVM.name}'")
+            Log.d(TAG, "Moving device '${deviceVM.device.name}' to room '${roomVM.name.value}'")
             structure.moveDevicesToRoom(roomVM.room, listOf(deviceVM.device))
-            Log.d(TAG, "Successfully moved device '${deviceVM.device.name}' to room '${roomVM.name}'")
+            Log.d(TAG, "Successfully moved device '${deviceVM.device.name}' to room '${roomVM.name.value}'")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to move device '${deviceVM.device.name}' to room '${roomVM.name}': ${e.message}", e)
+            Log.e(TAG, "Failed to move device '${deviceVM.device.name}' to room '${roomVM.name.value}': ${e.message}", e)
             throw e
         }
     }

@@ -17,12 +17,11 @@ limitations under the License.
 package com.example.googlehomeapisampleapp.view.devices
 
 import android.widget.Toast
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,15 +29,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
-import com.google.home.DecommissionEligibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -57,22 +57,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.googlehomeapisampleapp.MainActivity
+import com.example.googlehomeapisampleapp.camera.CameraStreamView
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getCoolingSetpoint
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getHeatingSetpoint
-import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMinCoolSetpointLimit
-import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMinHeatSetpointLimit
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMaxCoolSetpointLimit
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMaxHeatSetpointLimit
+import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMinCoolSetpointLimit
+import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getMinHeatSetpointLimit
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.getSystemMode
-import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isValidCoolingSetpointUpdate
-import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isValidHeatingSetpointUpdate
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isModeCoolingRelated
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isModeHeatingRelated
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isModeSupported
+import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isValidCoolingSetpointUpdate
+import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.isValidHeatingSetpointUpdate
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.setOccupiedCoolingPoint
 import com.example.googlehomeapisampleapp.extension.ThermostatTraitExtension.setOccupiedHeatingPoint
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
@@ -81,6 +83,7 @@ import com.google.home.ConnectivityState
 import com.google.home.DeviceType
 import com.google.home.HomeException
 import com.google.home.Trait
+import com.google.home.google.GoogleCameraDevice
 import com.google.home.matter.standard.BooleanState
 import com.google.home.matter.standard.LevelControl
 import com.google.home.matter.standard.LevelControlTrait
@@ -88,9 +91,9 @@ import com.google.home.matter.standard.OccupancySensing
 import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatTrait
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun DeviceView (homeAppVM: HomeAppViewModel) {
@@ -103,6 +106,14 @@ fun DeviceView (homeAppVM: HomeAppViewModel) {
 
     deviceVM?.let { vm ->
         val context = LocalContext.current
+
+        // Check if the selected device is a camera
+        val isCameraDevice = vm.type.collectAsState().value.factory == GoogleCameraDevice
+
+        // Placeholder for the onShowSnackbar lambda required by CameraStreamView
+        val onShowSnackbar: (String) -> Unit = { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
 
         LaunchedEffect(vm) {
             vm.checkDecommissionEligibility()
@@ -125,103 +136,127 @@ fun DeviceView (homeAppVM: HomeAppViewModel) {
 
         Column {
             Spacer(Modifier.height(64.dp))
-
-            Box(modifier = Modifier.weight(1f)) {
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = name,
-                            fontSize = 32.sp,
+            if (isCameraDevice) {
+                BackHandler {
+                    scope.launch { homeAppVM.selectedDeviceVM.emit(null) }
+                }
+                deviceVM?.let {vm ->
+                    // For a camera, render the dedicated CameraStreamView immediately
+                    CameraStreamView(
+                        deviceId = vm.id,
+                        paddingValues = PaddingValues(0.dp),
+                        onShowSnackbar = onShowSnackbar
+                    )
+                }
+            } else {
+                Box(modifier = Modifier.weight(1f)) {
+                    Column {
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 8.dp)
-                        )
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = name,
+                                fontSize = 32.sp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
+                            )
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Rename shown for all devices
-                            IconButton(onClick = { showRenameDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Rename Device",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Share button shown for all devices
+                                IconButton(onClick = {
+                                    homeAppVM.homeApp.commissioningManager.requestShareDevice(vm.id)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Share Device",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
 
-                            IconButton(onClick = { showDeleteDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Device",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                // Rename shown for all devices
+                                IconButton(onClick = { showRenameDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Rename Device",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                IconButton(onClick = { showDeleteDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete Device",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // Rename dialog that allows the user to input a new device name
-                    if (showRenameDialog) {
-                        var newName by remember { mutableStateOf(name) }
+                        // Rename dialog that allows the user to input a new device name
+                        if (showRenameDialog) {
+                            var newName by remember { mutableStateOf(name) }
 
-                        AlertDialog(
-                            onDismissRequest = { showRenameDialog = false },
-                            title = { Text("Rename Device") },
-                            text = {
-                                OutlinedTextField(
-                                    value = newName,
-                                    onValueChange = { newName = it },
-                                    label = { Text("Device Name") }
-                                )
-                            },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    vm.rename(newName)
-                                    showRenameDialog = false
-                                }) {
-                                    Text("Save")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showRenameDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
-                    }
-
-                    // Delete Confirmation Dialog
-                    if (showDeleteDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showDeleteDialog = false },
-                            title = { Text("Delete Device") },
-                            text = { Text("Are you sure you want to delete this device?") },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        showDeleteDialog = false
-                                        vm.deleteDevice()
+                            AlertDialog(
+                                onDismissRequest = { showRenameDialog = false },
+                                title = { Text("Rename Device") },
+                                text = {
+                                    OutlinedTextField(
+                                        value = newName,
+                                        onValueChange = { newName = it },
+                                        label = { Text("Device Name") }
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        vm.rename(newName)
+                                        showRenameDialog = false
+                                    }) {
+                                        Text("Save")
                                     }
-                                ) {
-                                    Text("Delete")
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showRenameDialog = false }) {
+                                        Text("Cancel")
+                                    }
                                 }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDeleteDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
-                    }
+                            )
+                        }
 
-                    Column(
-                        modifier = Modifier
-                            .verticalScroll(rememberScrollState())
-                            .weight(1f, fill = false)
-                    ) {
-                        ControlListComponent(homeAppVM)
+                        // Delete Confirmation Dialog
+                        if (showDeleteDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = { Text("Delete Device") },
+                                text = { Text("Are you sure you want to delete this device?") },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            showDeleteDialog = false
+                                            vm.deleteDevice()
+                                        }
+                                    ) {
+                                        Text("Delete")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .weight(1f, fill = false)
+                        ) {
+                            ControlListComponent(homeAppVM)
+                        }
                     }
                 }
             }
@@ -238,8 +273,8 @@ fun ControlListComponent (homeAppVM: HomeAppViewModel) {
     val deviceTraits: List<Trait> = deviceVM.traits.collectAsState().value
 
     Column (Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .fillMaxWidth()) {
+        .padding(horizontal = 16.dp, vertical = 8.dp)
+        .fillMaxWidth()) {
         Text(deviceTypeName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     }
 
@@ -266,29 +301,43 @@ fun ControlListItem (trait: Trait, type: DeviceType) {
 
                 Switch (checked = (trait.onOff == true), modifier = Modifier.align(Alignment.CenterEnd),
                     onCheckedChange = { state ->
-                        scope.launch { if (state) trait.on() else trait.off() }
+                        scope.launch {
+                            try {
+                                if (state) trait.on() else trait.off()
+                            } catch (e: HomeException) {
+                                MainActivity.showWarning(this, "Toggling device on/off failed")
+                            }
+                        }
                     },
                     enabled = isConnected
                 )
             }
             is LevelControl -> {
                 val level = trait.currentLevel
-                Text(trait.factory.toString(), fontSize = 20.sp)
-                LevelSlider(
-                    value = level?.toFloat()!!, low = 0f, high = 254f, steps = 0,
-                    modifier = Modifier.padding(top = 16.dp),
-                    onValueChangeFinished = { value: Float ->
-                        scope.launch {
-                            trait.moveToLevelWithOnOff(
-                                level = value.toInt().toUByte(),
-                                transitionTime = null,
-                                optionsMask = LevelControlTrait.OptionsBitmap(),
-                                optionsOverride = LevelControlTrait.OptionsBitmap()
-                            )
-                        }
-                    },
-                    isEnabled = isConnected
-                )
+                //Hide LevelControl completely when offline or level unavailable
+                if (isConnected && level != null) {
+                    Text(trait.factory.toString(), fontSize = 20.sp)
+                    LevelSlider(
+                        value = level.toFloat(),
+                        low = 0f, high = 254f, steps = 0,
+                        modifier = Modifier.padding(top = 16.dp),
+                        onValueChangeFinished = { value: Float ->
+                            scope.launch {
+                                try {
+                                    trait.moveToLevelWithOnOff(
+                                        level = value.toInt().toUByte(),
+                                        transitionTime = null,
+                                        optionsMask = LevelControlTrait.OptionsBitmap(),
+                                        optionsOverride = LevelControlTrait.OptionsBitmap()
+                                    )
+                                } catch (e: HomeException) {
+                                    MainActivity.showWarning(this, "Level control command failed")
+                                }
+                            }
+                        },
+                        isEnabled = isConnected
+                    )
+                }
             }
             is BooleanState -> {
                 Column (Modifier.fillMaxWidth()) {
@@ -366,7 +415,7 @@ fun ThermostatControl(
             }
         }
         val isCoolingSetpointEnabled = isConnected &&
-          (trait.systemMode?.isModeCoolingRelated() == true)
+                (trait.systemMode?.isModeCoolingRelated() == true)
         if (isCoolingSetpointEnabled) {
             val lowCoolSetpoint = trait.getMinCoolSetpointLimit()
             val highCoolSetpoint = trait.getMaxCoolSetpointLimit()
@@ -438,7 +487,7 @@ fun ThermostatControl(
         }
 
         val isHeatingSetpointEnabled = isConnected &&
-          (trait.systemMode?.isModeHeatingRelated() == true)
+                (trait.systemMode?.isModeHeatingRelated() == true)
         if (isHeatingSetpointEnabled) {
             val lowHeatSetpoint = trait.getMinHeatSetpointLimit()
             val highHeatSetpoint = trait.getMaxHeatSetpointLimit()

@@ -21,12 +21,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.HomeApp
 import com.google.home.ConnectivityState
+import com.google.home.DecommissionEligibility
 import com.google.home.DeviceType
 import com.google.home.DeviceTypeFactory
 import com.google.home.HomeDevice
 import com.google.home.Trait
 import com.google.home.TraitFactory
 import com.google.home.automation.UnknownDeviceType
+import com.google.home.google.GoogleCameraDevice
+import com.google.home.google.GoogleDisplayDevice
 import com.google.home.matter.standard.BooleanState
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.ContactSensorDevice
@@ -43,14 +46,11 @@ import com.google.home.matter.standard.OnOffPluginUnitDevice
 import com.google.home.matter.standard.OnOffSensorDevice
 import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatDevice
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow 
-import kotlinx.coroutines.launch
-import com.google.home.DecommissionIneligibleReason
-import com.google.home.DecommissionEligibility
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
 
 class DeviceViewModel (val device: HomeDevice) : ViewModel() {
 
@@ -81,10 +81,10 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
         viewModelScope.launch { subscribeToType() }
     }
     /**
-    * Renames the device both locally and reflects it in the UI.
-    * - Calls `setName()` to update the HomeDevice object
-    * - Emits the new name to `name` state flow so the UI updates reactively
-    */
+     * Renames the device both locally and reflects it in the UI.
+     * - Calls `setName()` to update the HomeDevice object
+     * - Emits the new name to `name` state flow so the UI updates reactively
+     */
     fun rename(newName: String) {
         viewModelScope.launch {
             try {
@@ -92,7 +92,7 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
                 name.emit(newName)
             } catch (e: Exception) {
                 Log.e("DeviceViewModel", "Error renaming device: ${e.message}")
-                
+
                 // Emit UI event to show error toast
                 _uiEventFlow.emit(UiEvent.ShowToast("Failed to rename device. Please try again."))
             }
@@ -143,13 +143,21 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             var primaryType : DeviceType = UnknownDeviceType()
 
             // Among all the types returned for this device, find the primary one:
-            for (typeInSet in typeSet)
-                if (typeInSet.metadata.isPrimaryType)
+            for (typeInSet in typeSet) {
+                if (typeInSet.metadata.isPrimaryType) {
                     primaryType = typeInSet
+                } // workaround for devices that didn't mark primary types
+                else if (typeInSet is GoogleCameraDevice) {
+                    primaryType = typeInSet
+                } else if (typeInSet is OnOffLightDevice) {
+                    primaryType = typeInSet
+                }
+            }
 
             // Optional: For devices with a single type that did not define a primary:
-            if (primaryType is UnknownDeviceType && typeSet.size == 1)
+            if (primaryType is UnknownDeviceType && typeSet.size == 1) {
                 primaryType = typeSet.first()
+            }
 
             // Set the connectivityState from the primary device type:
             connectivity = primaryType.metadata.sourceConnectivity.connectivityState
@@ -195,6 +203,8 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             ContactSensorDevice to BooleanState,
             OccupancySensorDevice to OccupancySensing,
             ThermostatDevice to Thermostat,
+            GoogleCameraDevice to OnOff,
+            GoogleDisplayDevice to OnOff,
         )
 
         // Map determining the user readable value for this device:
@@ -210,6 +220,8 @@ class DeviceViewModel (val device: HomeDevice) : ViewModel() {
             ContactSensorDevice to "Sensor",
             OccupancySensorDevice to "Sensor",
             ThermostatDevice to "Thermostat",
+            GoogleCameraDevice to "Camera",
+            GoogleDisplayDevice to "Hub"
         )
 
         fun <T : Trait?> getDeviceStatus(type: DeviceType, traits : List<T>, connectivity: ConnectivityState) : String {

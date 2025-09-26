@@ -48,7 +48,11 @@ import com.google.home.matter.standard.Thermostat.Companion.systemMode
 import com.google.home.matter.standard.ThermostatTrait
 import kotlinx.coroutines.flow.MutableStateFlow
 
-class DraftViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel() {
+class DraftViewModel (
+    val candidateVM: CandidateViewModel? = null,
+    private val presetDraft: DraftAutomation? = null,
+    val isLocked: Boolean = false,
+) : ViewModel() {
 
     private val DRAFT_NAME: String = "New Automation"
     private val DRAFT_DESCRIPTION: String = "New custom automation"
@@ -63,8 +67,8 @@ class DraftViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel()
     val selectedActionVM: MutableStateFlow<ActionViewModel?>
 
     init {
-        name = MutableStateFlow(candidateVM?.name ?: DRAFT_NAME)
-        description = MutableStateFlow(candidateVM?.description ?: DRAFT_DESCRIPTION)
+        name = MutableStateFlow(presetDraft?.name ?: (candidateVM?.name ?: DRAFT_NAME))
+        description = MutableStateFlow(presetDraft?.description ?: (candidateVM?.description ?: DRAFT_DESCRIPTION))
 
         starterVMs = MutableStateFlow(mutableListOf())
         actionVMs = MutableStateFlow(mutableListOf())
@@ -89,6 +93,7 @@ class DraftViewModel (val candidateVM: CandidateViewModel? = null) : ViewModel()
     }
 
     fun getDraftAutomation() : DraftAutomation {
+        presetDraft?.let { return it }
         val name: String = name.value
         val description: String = description.value
 

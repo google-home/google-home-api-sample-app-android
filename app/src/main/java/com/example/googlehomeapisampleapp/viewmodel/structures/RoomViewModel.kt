@@ -22,7 +22,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.google.home.Room
 import com.google.home.Structure
-import com.google.home.deleteRoom
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,22 +90,6 @@ class RoomViewModel (val structure: Structure, val room: Room) : ViewModel() {
         }
     }
 
-    /**
-     * Delete this room via the Structure API.
-     * Note: If the room contains devices, they will be unassigned from the room
-     * but will remain in the structure as devices without a room.
-     * Exception if the delete operation fails
-     */
-    suspend fun delete() {
-        try {
-            Log.d(TAG, "Deleting room '${name.value}'")
-            structure.deleteRoom(room)
-            Log.d(TAG, "Successfully deleted room '${name.value}'")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete room '${name.value}': ${e.message}", e)
-            throw e
-        }
-    }
     companion object {
         private const val TAG = "RoomViewModel"
     }
