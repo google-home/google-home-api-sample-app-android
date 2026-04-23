@@ -26,14 +26,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
+import com.example.googlehomeapisampleapp.viewmodel.settings.Debugger
+import kotlinx.coroutines.launch
 
 @Composable
 fun DebugView(homeAppVM: HomeAppViewModel) {
+  val scope = rememberCoroutineScope()
+  val debugger = Debugger.getInstance(homeAppVM.homeApp.homeClient)
+  val selectedStructureVM = homeAppVM.selectedStructureVM.collectAsState().value
+
   Surface(
     modifier = Modifier.fillMaxSize(),
     color = MaterialTheme.colorScheme.background
@@ -54,8 +62,15 @@ fun DebugView(homeAppVM: HomeAppViewModel) {
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-          onClick = { /* No functionality yet */ },
-          modifier = Modifier.fillMaxWidth()
+          onClick = {
+            scope.launch {
+              selectedStructureVM?.structure?.let { structure ->
+                debugger.dumpStructure(structure)
+              }
+            }
+          },
+          modifier = Modifier.fillMaxWidth(),
+          enabled = selectedStructureVM != null
         ) {
           Text("Dump Structure")
         }
