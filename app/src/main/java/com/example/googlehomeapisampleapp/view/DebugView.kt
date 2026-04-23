@@ -78,8 +78,15 @@ fun DebugView(homeAppVM: HomeAppViewModel) {
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-          onClick = { /* No functionality yet */ },
-          modifier = Modifier.fillMaxWidth()
+          onClick = {
+            scope.launch {
+              selectedStructureVM?.structure?.let { structure ->
+                debugger.dumpAutomationsInStructure(structure)
+              }
+            }
+          },
+          modifier = Modifier.fillMaxWidth(),
+          enabled = selectedStructureVM != null
         ) {
           Text("Dump Automation")
         }
