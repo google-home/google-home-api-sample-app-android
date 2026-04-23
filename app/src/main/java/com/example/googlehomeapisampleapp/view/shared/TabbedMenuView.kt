@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -63,6 +65,13 @@ fun TabbedMenuView(homeAppVM: HomeAppViewModel) {
             homeAppVM.selectedTab.emit(HomeAppViewModel.NavigationTab.AUTOMATIONS)
           }
         })
+      Column(
+        content = { DebugButtonContent(homeAppVM) },
+        modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp).clickable {
+          homeAppVM.viewModelScope.launch {
+            homeAppVM.selectedTab.emit(HomeAppViewModel.NavigationTab.DEBUG)
+          }
+        })
     }
     // Spacer to offset the system gesture bars for edge-to-edge applications:
     Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.systemBars))
@@ -96,5 +105,20 @@ fun AutomationsButtonContent(homeAppVM: HomeAppViewModel) {
       Modifier.size(36.dp).background(Color.Transparent), tint = buttonColor
     )
     Text(stringResource(R.string.tab_button_automations), color = buttonColor)
+  }
+}
+
+@Composable
+fun DebugButtonContent(homeAppVM: HomeAppViewModel) {
+  val selectedTab: HomeAppViewModel.NavigationTab = homeAppVM.selectedTab.collectAsState().value
+  val isSelected: Boolean = (selectedTab == HomeAppViewModel.NavigationTab.DEBUG)
+  val buttonColor: Color = if (isSelected) MaterialTheme.colorScheme.primary else Color.DarkGray
+
+  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+    Icon(
+      imageVector = Icons.Default.Settings, "",
+      Modifier.size(36.dp).background(Color.Transparent), tint = buttonColor
+    )
+    Text(stringResource(R.string.tab_button_debug), color = buttonColor)
   }
 }

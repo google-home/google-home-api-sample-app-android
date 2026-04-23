@@ -9,6 +9,7 @@
 
   <string name="tab_button_devices">Devices</string>
   <string name="tab_button_automations">Automations</string>
+  <string name="tab_button_debug">Debug</string>
 
   <string name="devices_structure_loading">Loading…</string>
   <string name="devices_button_add">+ Add Device</string>

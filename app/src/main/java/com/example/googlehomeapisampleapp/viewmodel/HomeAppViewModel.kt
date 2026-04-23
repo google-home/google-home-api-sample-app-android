@@ -86,7 +86,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   enum class NavigationTab {
     DEVICES,
     AUTOMATIONS,
-    HISTORY
+    HISTORY,
+    DEBUG
   }
 
   companion object {

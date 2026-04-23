@@ -76,6 +76,7 @@ import com.example.googlehomeapisampleapp.view.automations.StarterView
 import com.example.googlehomeapisampleapp.view.devices.DeviceView
 import com.example.googlehomeapisampleapp.view.devices.DevicesView
 import com.example.googlehomeapisampleapp.view.hubs.HubDiscoveryView
+import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.ActionViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.AutomationViewModel
@@ -255,11 +256,26 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
           HomeAppViewModel.NavigationTab.AUTOMATIONS -> AutomationsView(homeAppVM)
 
           HomeAppViewModel.NavigationTab.HISTORY -> {
-            androidx.compose.material3.Surface(
-              color = MaterialTheme.colorScheme.background,
-              modifier = Modifier.fillMaxSize()
-            ) {
-              HistoryView(viewModel = homeAppVM)
+            Column(modifier = Modifier.fillMaxSize()) {
+              androidx.compose.material3.Surface(
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier.weight(1f)
+              ) {
+                HistoryView(viewModel = homeAppVM)
+              }
+              TabbedMenuView(homeAppVM)
+            }
+          }
+
+          HomeAppViewModel.NavigationTab.DEBUG -> {
+            Column(modifier = Modifier.fillMaxSize()) {
+              androidx.compose.material3.Surface(
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier.weight(1f)
+              ) {
+                // Blank page
+              }
+              TabbedMenuView(homeAppVM)
             }
           }
         }
