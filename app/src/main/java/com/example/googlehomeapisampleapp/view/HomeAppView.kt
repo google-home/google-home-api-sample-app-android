@@ -267,17 +267,7 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
             }
           }
 
-          HomeAppViewModel.NavigationTab.DEBUG -> {
-            Column(modifier = Modifier.fillMaxSize()) {
-              androidx.compose.material3.Surface(
-                color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.weight(1f)
-              ) {
-                // Blank page
-              }
-              TabbedMenuView(homeAppVM)
-            }
-          }
+          HomeAppViewModel.NavigationTab.DEBUG -> DebugView(homeAppVM)
         }
       }
 
