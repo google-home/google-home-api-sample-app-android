@@ -42,6 +42,7 @@ import com.google.home.google.GoogleTVDevice
 import com.google.home.google.MediaActivityState
 import com.google.home.google.Notification
 import com.google.home.google.PushAvStreamTransport
+import com.google.home.google.RecordingMode
 import com.google.home.google.Time
 import com.google.home.google.VoiceStarter
 import com.google.home.google.Volume
@@ -153,6 +154,7 @@ object HomeModule {
       OccupancySensing,
       OnOff,
       PushAvStreamTransport,
+      RecordingMode,
       TemperatureControl,
       TemperatureMeasurement,
       Thermostat,

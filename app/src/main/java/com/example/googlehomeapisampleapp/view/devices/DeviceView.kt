@@ -240,6 +240,12 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             //Device info
             val deviceInfo by cameraVm.deviceInfo.collectAsStateWithLifecycle()
 
+            val cameraTimelineUiState by cameraVm.cameraTimelineUiState.collectAsStateWithLifecycle()
+
+            // Recording Mode
+            val recordingModeOptions by cameraVm.recordingModeOptions.collectAsStateWithLifecycle()
+            val selectedRecordingModeIndex by cameraVm.selectedRecordingModeIndex.collectAsStateWithLifecycle()
+
             CameraStreamView(
               playerState = playerState,
               isTalkbackSupported = isTalkbackSupported,
@@ -266,6 +272,14 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
               onToggleChime = { cameraVm.toggleIndoorChime() },
               chimeType = chimeType,
               onSetChimeType = { selectedType -> cameraVm.setExternalChimeType(selectedType) },
+
+              // Timeline
+              cameraTimelineUiState = cameraTimelineUiState,
+
+              // Recording Mode
+              recordingModeOptions = recordingModeOptions,
+              selectedRecordingModeIndex = selectedRecordingModeIndex,
+              onSetRecordingMode = { index -> cameraVm.setRecordingMode(index) },
 
               paddingValues = PaddingValues(0.dp),
               onRetry = { cameraVm.restartInitialization() },
@@ -623,14 +637,23 @@ fun FanControlComponent(
   isConnected: Boolean,
 ) {
   val scope = rememberCoroutineScope()
-  val fanMode = trait.fanMode ?: FanControlTrait.FanModeEnum.Off
-  var sliderPosition by remember(fanMode) {
+  val fanMode = trait.fanMode
+  val percentSetting = trait.percentSetting
+  // Determine if this device supports fanMode or only percentSetting
+  val supportsFanMode = fanMode != null
+  val supportsPercent = percentSetting != null
+
+  var sliderPosition by remember(fanMode, percentSetting) {
     mutableFloatStateOf(
-      when (fanMode) {
-        FanControlTrait.FanModeEnum.Off -> 0f
-        FanControlTrait.FanModeEnum.Low -> 25f
-        FanControlTrait.FanModeEnum.Medium -> 50f
-        FanControlTrait.FanModeEnum.High -> 75f
+      when {
+        supportsPercent -> percentSetting!!.toFloat()
+        supportsFanMode -> when (fanMode) {
+          FanControlTrait.FanModeEnum.Off -> 0f
+          FanControlTrait.FanModeEnum.Low -> 25f
+          FanControlTrait.FanModeEnum.Medium -> 50f
+          FanControlTrait.FanModeEnum.High -> 75f
+          else -> 0f
+        }
         else -> 0f
       }
     )
@@ -647,71 +670,70 @@ fun FanControlComponent(
 
   Column {
     Spacer(Modifier.height(8.dp))
-    Box(Modifier.fillMaxWidth()) {
-      Text("Fan Mode", fontSize = 16.sp)
 
-      var expanded by remember { mutableStateOf(false) }
-      Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-        TextButton(
-          onClick = { if (isConnected) expanded = true },
-          enabled = isConnected
-        ) {
-          Text(
-            text = when (fanMode) {
-              FanControlTrait.FanModeEnum.Off -> "Off"
-              FanControlTrait.FanModeEnum.Low -> "Low"
-              FanControlTrait.FanModeEnum.Medium -> "Medium"
-              FanControlTrait.FanModeEnum.High -> "High"
-              else -> "Unknown"
-            },
-            color = if (isConnected) {
-              MaterialTheme.colorScheme.primary
-            } else {
-              MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-            }
-          )
-          Icon(
-            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-            contentDescription = null
-          )
-        }
+    // Only show Fan Mode dropdown if the device supports it
+    if (supportsFanMode) {
+      Box(Modifier.fillMaxWidth()) {
+        Text("Fan Mode", fontSize = 16.sp)
+        var expanded by remember { mutableStateOf(false) }
+        Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+          TextButton(
+            onClick = { if (isConnected) expanded = true },
+            enabled = isConnected
+          ) {
+            Text(
+              text = when (fanMode) {
+                FanControlTrait.FanModeEnum.Off -> "Off"
+                FanControlTrait.FanModeEnum.Low -> "Low"
+                FanControlTrait.FanModeEnum.Medium -> "Medium"
+                FanControlTrait.FanModeEnum.High -> "High"
+                else -> "Unknown"
+              },
+              color = if (isConnected)
+                MaterialTheme.colorScheme.primary
+              else
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+            Icon(
+              imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+              contentDescription = null
+            )
+          }
 
-        DropdownMenu(
-          expanded = expanded,
-          onDismissRequest = { expanded = false }
-        ) {
-          listOf(
-            FanControlTrait.FanModeEnum.Off to "Off",
-            FanControlTrait.FanModeEnum.Low to "Low",
-            FanControlTrait.FanModeEnum.Medium to "Medium",
-            FanControlTrait.FanModeEnum.High to "High"
-          ).forEach { (mode, label) ->
-            DropdownMenuItem(
-              text = { Text(label) },
-              onClick = {
-                expanded = false
-                scope.launch {
-                  try {
-                    trait.update { setFanMode(mode) }
-                    // Update slider to designated position when mode selected from dropdown
-                    sliderPosition = when (mode) {
-                      FanControlTrait.FanModeEnum.Off -> 0f
-                      FanControlTrait.FanModeEnum.Low -> 25f
-                      FanControlTrait.FanModeEnum.Medium -> 50f
-                      FanControlTrait.FanModeEnum.High -> 75f
-                      else -> 0f
+          DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            listOf(
+              FanControlTrait.FanModeEnum.Off to "Off",
+              FanControlTrait.FanModeEnum.Low to "Low",
+              FanControlTrait.FanModeEnum.Medium to "Medium",
+              FanControlTrait.FanModeEnum.High to "High"
+            ).forEach { (mode, label) ->
+              DropdownMenuItem(
+                text = { Text(label) },
+                onClick = {
+                  expanded = false
+                  scope.launch {
+                    try {
+                      trait.update { setFanMode(mode) }
+                      sliderPosition = when (mode) {
+                        FanControlTrait.FanModeEnum.Off -> 0f
+                        FanControlTrait.FanModeEnum.Low -> 25f
+                        FanControlTrait.FanModeEnum.Medium -> 50f
+                        FanControlTrait.FanModeEnum.High -> 75f
+                        else -> 0f
+                      }
+                    } catch (e: Exception) {
+                      MainActivity.showWarning(scope, "Failed to set fan mode: ${e.message}")
                     }
-                  } catch (e: Exception) {
-                    MainActivity.showWarning(scope, "Failed to set fan mode: ${e.message}")
                   }
                 }
-              }
-            )
+              )
+            }
           }
         }
       }
+      Spacer(Modifier.height(16.dp))
     }
-    Spacer(Modifier.height(16.dp))
+
     Box(Modifier.fillMaxWidth()) {
       Text("Fan Speed", fontSize = 16.sp)
       Text(
@@ -734,8 +756,17 @@ fun FanControlComponent(
       onValueChangeFinished = { value ->
         scope.launch {
           try {
-            val newMode = percentageToFanMode(value)
-            trait.update { setFanMode(newMode) }
+            when {
+              // Prefer percentSetting if supported (playground fan)
+              supportsPercent -> {
+                trait.update { setPercentSetting(value.toInt().toUByte()) }
+              }
+              // Fall back to fanMode mapping
+              supportsFanMode -> {
+                val newMode = percentageToFanMode(value)
+                trait.update { setFanMode(newMode) }
+              }
+            }
           } catch (e: Exception) {
             MainActivity.showWarning(scope, "Failed to set fan speed: ${e.message}")
           }

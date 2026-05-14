@@ -14,6 +14,7 @@ limitations under the License.
 */
 package com.example.googlehomeapisampleapp.history
 
+import android.util.Log
 import com.google.home.HistoryItem
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.google.CameraHistory
@@ -42,6 +43,7 @@ sealed interface HistoryUiDataModel : HistoryEventUi {
         val eventType: HistoryUiEventType,
         val mediaUrl: MediaUrl,
         val deviceId: String,
+        val shortCaption: String? = null
     ) : HistoryUiDataModel
 }
 
@@ -116,11 +118,17 @@ private val EVENT_TYPE_PRIORITY = listOf(
 @OptIn(HomeExperimentalApi::class)
 fun HistoryItem.toUiDataModel(): HistoryUiDataModel {
     val event = this.event
+    Log.d("HistoryUiDataModel", "toUiDataModel: event type = ${event.javaClass.simpleName}, eventName = ${event.eventName}")
     return when (event) {
         is CameraHistory.HistoryItemEvent -> {
             val eventTypes = event.eventTracks?.flatMap { it.eventTypes }?.toSet()
             val detected = EVENT_TYPE_PRIORITY.firstOrNull { eventTypes?.contains(it) == true }
                 ?: CameraHistoryTrait.EventType.Unknown
+
+            Log.d("HistoryUiDataModel", "CameraEvent captions: ${event.captions}")
+            // Extract the short caption if it exists
+            val shortCaption = event.captions?.find { it.captionType == CameraHistoryTrait.CaptionType.Short }?.captionText
+            Log.d("HistoryUiDataModel", "Extracted shortCaption: $shortCaption")
 
             HistoryUiDataModel.CameraEvent(
                 eventId = id.id,
@@ -129,14 +137,18 @@ fun HistoryItem.toUiDataModel(): HistoryUiDataModel {
                 eventType = HistoryUiEventType.fromEventType(detected),
                 mediaUrl = MediaUrl.fromCameraHistoryMediaUrl(event.mediaUrl),
                 deviceId = entityId.id,
+                shortCaption = shortCaption // Add this argument
             )
         }
-        else -> HistoryUiDataModel.DefaultEvent(
-            eventId = id.id,
-            timestamp = timestamp,
-            entityName = entityName ?: "Event",
-            eventName = event.eventName,
-        )
+        else -> {
+            Log.d("HistoryUiDataModel", "DefaultEvent: fallback handling")
+            HistoryUiDataModel.DefaultEvent(
+                eventId = id.id,
+                timestamp = timestamp,
+                entityName = entityName ?: "Event",
+                eventName = event.eventName,
+            )
+        }
     }
 }
 
