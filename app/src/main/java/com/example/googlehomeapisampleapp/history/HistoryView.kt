@@ -223,7 +223,7 @@ fun HistoryItemRow(
 private fun getEventMetadata(model: HistoryUiDataModel): Pair<String, ImageVector> {
     return when (model) {
         is HistoryUiDataModel.CameraEvent -> {
-            val (title, icon) = when (model.eventType) {
+            val defaultTitleIcon = when (model.eventType) {
                 HistoryUiEventType.Person -> "Person" to Icons.Outlined.Person
                 HistoryUiEventType.Motion -> "Motion" to Icons.Outlined.MotionPhotosOn
                 HistoryUiEventType.Doorbell -> "Doorbell" to Icons.Outlined.Doorbell
@@ -231,7 +231,9 @@ private fun getEventMetadata(model: HistoryUiDataModel): Pair<String, ImageVecto
                 HistoryUiEventType.Animal -> "Animal" to Icons.Outlined.Pets
                 HistoryUiEventType.Unknown -> "Camera Event" to Icons.Outlined.Videocam
             }
-            title to icon
+            // Prioritize shortCaption if available and not blank
+            val title = model.shortCaption?.takeIf { it.isNotBlank() } ?: defaultTitleIcon.first
+            title to defaultTitleIcon.second // Keep the original icon
         }
         is HistoryUiDataModel.DefaultEvent -> {
             (model.eventName ?: "Activity") to Icons.Outlined.History

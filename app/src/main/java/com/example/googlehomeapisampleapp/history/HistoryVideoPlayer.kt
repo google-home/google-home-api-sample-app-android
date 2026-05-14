@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package com.example.googlehomeapisampleapp.history
 
 import android.view.ViewGroup
@@ -47,13 +48,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -61,6 +62,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -68,6 +71,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 
 /** Playback state for [HistoryVideoPlayer]. */
 enum class VideoPlayerState {
@@ -79,34 +83,99 @@ enum class VideoPlayerState {
 }
 
 /**
- * Composable video player that plays camera history clips.
+ * Composable that displays the appropriate media for a camera history event:
  *
- * Uses MP4 as the primary playback path. Nest camera DASH and HLS streams embed
- * short-lived cc_tokens in segment URLs that expire before ExoPlayer can fetch them,
- * causing 400 errors. The MP4 URL uses a longer-lived cc_signature on a different
- * serving endpoint and is reliable. DASH and HLS are kept as fallbacks in case the
- * MP4 URL is unavailable.
+ * - **Video** (MP4, DASH, HLS): Plays the clip with audio via ExoPlayer.
+ * - **Still Image** (previewUrl or thumbnailUrl): Shows the snapshot image.
+ * - **No media**: Shows a placeholder icon.
  *
- * Playback order: MP4 (primary) → DASH (fallback) → HLS (final fallback).
+ * Playback order for video: MP4 (primary) → DASH (fallback) → HLS (final fallback).
+ * MP4 is preferred because Nest DASH/HLS streams embed short-lived tokens in segment
+ * URLs that can expire before ExoPlayer fetches them.
  *
- * @param dashManifestUrl The DASH manifest URL (.mpd). Fallback if mp4Url is blank.
- * @param hlsUrl          The HLS master playlist URL (.m3u8). Final fallback.
- * @param mp4Url          The direct MP4 download URL. Primary playback path.
- * @param modifier        Optional modifier for the outer container.
+ * @param mediaUrl The [MediaUrl] for this event, containing all available media URLs.
+ * @param modifier Optional modifier for the outer container.
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun HistoryVideoPlayer(
-    dashManifestUrl: String?,
-    hlsUrl: String? = null,
-    mp4Url: String? = null,
+    mediaUrl: MediaUrl,
     modifier: Modifier = Modifier,
+) {
+    val hasVideo = mediaUrl.hasVideo
+    val imageUrl = mediaUrl.previewUrl.ifBlank { mediaUrl.thumbnailUrl }
+    val hasImage = imageUrl.isNotBlank()
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+            .background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            // No media available
+            !hasVideo && !hasImage -> {
+                Icon(
+                    imageVector = Icons.Outlined.Videocam,
+                    contentDescription = "No media available",
+                    modifier = Modifier.size(64.dp),
+                    tint = Color.DarkGray,
+                )
+            }
+
+            // Still image — show snapshot captured in Still Images recording mode
+            !hasVideo && hasImage -> {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = "Event snapshot",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+                Text(
+                    text = "Still Image",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(4.dp),
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+
+            // Video available — play with audio
+            else -> {
+                VideoPlayerContent(
+                    mp4Url = mediaUrl.mp4DownloadUrl,
+                    dashManifestUrl = mediaUrl.dashManifestUrl,
+                    hlsUrl = mediaUrl.hlsMasterPlaylistUrl,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Internal composable that handles video playback with full audio support.
+ * Manages ExoPlayer lifecycle, fallback URL logic, and buffering state.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+private fun VideoPlayerContent(
+    mp4Url: String,
+    dashManifestUrl: String,
+    hlsUrl: String,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentMp4Url by rememberUpdatedState(mp4Url)
     val currentDashUrl by rememberUpdatedState(dashManifestUrl)
     val currentHlsUrl by rememberUpdatedState(hlsUrl)
-    val currentMp4Url by rememberUpdatedState(mp4Url)
 
     var playerState by remember { mutableStateOf(VideoPlayerState.IDLE) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -117,7 +186,15 @@ fun HistoryVideoPlayer(
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
+            // Configure audio attributes so the system grants audio focus
+            // and routes audio through the correct output stream.
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build()
+            setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
+            volume = 1f
+            playWhenReady = false
         }
     }
 
@@ -143,20 +220,17 @@ fun HistoryVideoPlayer(
         errorMessage = null
 
         when {
-            !currentMp4Url.isNullOrBlank() ->
-                loadMediaItem(currentMp4Url!!, MimeTypes.VIDEO_MP4)
-            !currentDashUrl.isNullOrBlank() -> {
+            currentMp4Url.isNotBlank() ->
+                loadMediaItem(currentMp4Url, MimeTypes.VIDEO_MP4)
+            currentDashUrl.isNotBlank() -> {
                 usingDash = true
-                loadMediaItem(currentDashUrl!!, MimeTypes.APPLICATION_MPD)
+                loadMediaItem(currentDashUrl, MimeTypes.APPLICATION_MPD)
             }
-            !currentHlsUrl.isNullOrBlank() -> {
+            currentHlsUrl.isNotBlank() -> {
                 usingHls = true
-                loadMediaItem(currentHlsUrl!!, MimeTypes.APPLICATION_M3U8)
+                loadMediaItem(currentHlsUrl, MimeTypes.APPLICATION_M3U8)
             }
-            else -> {
-                playerState = VideoPlayerState.IDLE
-                errorMessage = null
-            }
+            else -> playerState = VideoPlayerState.IDLE
         }
     }
 
@@ -174,25 +248,26 @@ fun HistoryVideoPlayer(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // Attempt fallback URLs in order: MP4 → DASH → HLS
                 when {
-                    !usingDash && !usingHls && !currentDashUrl.isNullOrBlank() -> {
+                    !usingDash && !usingHls && currentDashUrl.isNotBlank() -> {
                         usingDash = true
                         playerState = VideoPlayerState.LOADING
                         errorMessage = null
-                        loadMediaItem(currentDashUrl!!, MimeTypes.APPLICATION_MPD)
+                        loadMediaItem(currentDashUrl, MimeTypes.APPLICATION_MPD)
                     }
-                    !usingDash && !usingHls && !currentHlsUrl.isNullOrBlank() -> {
+                    !usingDash && !usingHls && currentHlsUrl.isNotBlank() -> {
                         usingHls = true
                         playerState = VideoPlayerState.LOADING
                         errorMessage = null
-                        loadMediaItem(currentHlsUrl!!, MimeTypes.APPLICATION_M3U8)
+                        loadMediaItem(currentHlsUrl, MimeTypes.APPLICATION_M3U8)
                     }
-                    usingDash && !usingHls && !currentHlsUrl.isNullOrBlank() -> {
+                    usingDash && !usingHls && currentHlsUrl.isNotBlank() -> {
                         usingDash = false
                         usingHls = true
                         playerState = VideoPlayerState.LOADING
                         errorMessage = null
-                        loadMediaItem(currentHlsUrl!!, MimeTypes.APPLICATION_M3U8)
+                        loadMediaItem(currentHlsUrl, MimeTypes.APPLICATION_M3U8)
                     }
                     else -> {
                         playerState = VideoPlayerState.ERROR
@@ -205,8 +280,7 @@ fun HistoryVideoPlayer(
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    // Start playback when a new event is opened
-    LaunchedEffect(dashManifestUrl, mp4Url, hlsUrl) {
+    LaunchedEffect(mp4Url, dashManifestUrl, hlsUrl) {
         startPlayback()
     }
 
@@ -228,93 +302,59 @@ fun HistoryVideoPlayer(
         onDispose { exoPlayer.release() }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-            .background(Color.Black),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            // No clip available — placeholder
-            currentMp4Url.isNullOrBlank() &&
-                    currentDashUrl.isNullOrBlank() &&
-                    currentHlsUrl.isNullOrBlank() -> {
-                Icon(
-                    imageVector = Icons.Outlined.Videocam,
-                    contentDescription = "No video selected",
-                    modifier = Modifier.size(64.dp),
-                    tint = Color.DarkGray,
-                )
-            }
-
-            // Error state with retry
-            playerState == VideoPlayerState.ERROR -> {
-                Box(
-                    modifier = Modifier.matchParentSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = errorMessage ?: "Unable to play video",
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Icon(
-                        imageVector = Icons.Outlined.Refresh,
-                        contentDescription = "Retry",
-                        tint = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp)
-                            .size(32.dp)
-                            .clickable { startPlayback() },
+    if (playerState == VideoPlayerState.ERROR) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = errorMessage ?: "Unable to play video",
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Icon(
+                imageVector = Icons.Outlined.Refresh,
+                contentDescription = "Retry playback",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp)
+                    .size(32.dp)
+                    .clickable { startPlayback() },
+            )
+        }
+    } else {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                    controllerAutoShow = true
+                    controllerShowTimeoutMs = 3000
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                 }
-            }
+            },
+            update = { playerView -> playerView.player = exoPlayer },
+            modifier = Modifier.fillMaxSize(),
+        )
 
-            // Video surface — shown for LOADING, PLAYING, and ENDED states.
-            // ENDED keeps the player surface visible so the user can replay via controls.
-            else -> {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            player = exoPlayer
-                            useController = true
-                            controllerAutoShow = true
-                            controllerShowTimeoutMs = 3000
-                            layoutParams = FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                            )
-                        }
-                    },
-                    update = { playerView ->
-                        playerView.player = exoPlayer
-                    },
-                    modifier = Modifier.matchParentSize(),
-                )
-
-                // Loading overlay — only shown while buffering, not when ended
-                AnimatedVisibility(
-                    visible = playerState == VideoPlayerState.LOADING,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(48.dp),
-                    )
-                }
-            }
+        AnimatedVisibility(
+            visible = playerState == VideoPlayerState.LOADING,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(48.dp),
+            )
         }
     }
 }
 
 /**
- * Full-screen video player with a top bar and back button.
- * Shown when a user taps a camera history event from the list.
+ * Full-screen media viewer shown when a user taps a camera history event.
+ * Displays video with audio for clip events, or a still image for snapshot events.
  */
 @Composable
 fun HistoryVideoPlayerScreen(
@@ -357,9 +397,7 @@ fun HistoryVideoPlayerScreen(
 
             // Video player — MP4 primary, DASH/HLS as fallbacks
             HistoryVideoPlayer(
-                dashManifestUrl = event.mediaUrl.dashManifestUrl,
-                hlsUrl = event.mediaUrl.hlsMasterPlaylistUrl,
-                mp4Url = event.mediaUrl.mp4DownloadUrl,
+                mediaUrl = event.mediaUrl,
                 modifier = Modifier.weight(1f),
             )
         }

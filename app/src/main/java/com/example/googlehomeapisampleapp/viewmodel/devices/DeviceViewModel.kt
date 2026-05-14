@@ -61,10 +61,14 @@ import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatDevice
 import com.google.home.matter.standard.WindowCovering
 import com.google.home.matter.standard.WindowCoveringDevice
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -127,7 +131,13 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
   fun deleteDevice() {
     viewModelScope.launch {
       try {
+        _uiEventFlow.emit(UiEvent.ShowToast("GHP isMatterDevice: ${device.isMatterDevice}"))
+        _uiEventFlow.emit(UiEvent.ShowToast("GHP isEligible: ${device.checkDecommissionEligibility()}"))
+
         val eligibility = device.checkDecommissionEligibility()
+        Log.e("DeviceViewModel", "GHP isMatterDevice: ${device.isMatterDevice}")
+        Log.e("DeviceViewModel", "GHP Decommission eligibility evaluated: $eligibility")
+
         if (eligibility is DecommissionEligibility.Eligible || eligibility is DecommissionEligibility.EligibleWithSideEffects) {
           device.decommissionDevice()
           _uiEventFlow.emit(UiEvent.ShowToast("Device deleted successfully."))
@@ -142,22 +152,35 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
       }
     }
   }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun subscribeToType() {
     // Subscribe to changes on device type, and the traits/attributes within:
-    device.types().collect { typeSet ->
-      // Define the fallback priority order in one place.
+    device.types().flatMapLatest { typeSet ->
+      /**
+       * Fallback type priority order.
+       *
+       * For multi-functional devices (e.g., a Doorbell that also has a Camera),
+       * the first matching type in this list takes precedence.
+       *
+       * To adjust priority, simply reorder the elements below.
+       */
       val fallbackPriorityOrder = listOf(
-        FanDevice::class,
-        GoogleCameraDevice::class,
+        ThermostatDevice::class,
         GoogleDoorbellDevice::class,
-        GoogleTVDevice::class,
-        OnOffLightDevice::class,
+        WindowCoveringDevice::class,
+        FanDevice::class,
+        DoorLockDevice::class,
         SpeakerDevice::class,
+        GoogleTVDevice::class,
+        DimmableLightDevice::class,
+        GoogleCameraDevice::class,
+        OnOffLightDevice::class,
         TemperatureSensorDevice::class,
       )
 
       // Find the primary type in a single, chained expression.
-      val primaryType: DeviceType =
+      val primaryTypeCandidate: DeviceType =
         // 1. First, try to find the officially marked primary type.
         typeSet.find { it.metadata.isPrimaryType }
         // 2. If not found, use the fallback priority list.
@@ -167,11 +190,21 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
               typeSet.find { priorityClass.isInstance(it) }
             }
             .firstOrNull()
-          // 3. If still not found, use the first (and only) type if there's exactly one.
-          ?: typeSet.singleOrNull()
+          // 3. If still not found, use the first type if there are any.
+          ?: typeSet.firstOrNull()
           // 4. If all else fails, default to UnknownDeviceType.
           ?: UnknownDeviceType()
 
+      // Observe attribute state changes for the primary device type:
+      // If the type is Unknown, bypass observation to prevent UI hangs.
+      if (primaryTypeCandidate is UnknownDeviceType) {
+        flowOf(Pair(primaryTypeCandidate, typeSet))
+      } else {
+        device.type(primaryTypeCandidate.factory).map { updatedPrimaryType ->
+          Pair(updatedPrimaryType, typeSet)
+        }
+      }
+    }.collect { (primaryType, typeSet) ->
       // Set the connectivityState from the primary device type:
       connectivity = primaryType.metadata.sourceConnectivity.connectivityState
 
@@ -347,6 +380,26 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
         type.metadata.sourceConnectivity.connectivityState != ConnectivityState.PARTIALLY_ONLINE
       )
         return "Offline"
+      if (type.factory == FanDevice) {
+        val fanControlTrait = traits.filterIsInstance<FanControl>().firstOrNull()
+        val onOffTrait = traits.filterIsInstance<OnOff>().firstOrNull()
+
+        if (onOffTrait?.onOff == false) return "Off"
+
+        val fanMode = fanControlTrait?.fanMode
+        val percentSetting = fanControlTrait?.percentSetting
+
+        return when {
+          fanMode != null -> fanMode.toString()
+          percentSetting != null -> when {
+            percentSetting == 0.toUByte() -> "Off"
+            percentSetting <= 33.toUByte() -> "Low"
+            percentSetting <= 66.toUByte() -> "Medium"
+            else -> "High"
+          }
+          else -> "On"
+        }
+      }
 
       if (targetTrait == null)
         return "Unsupported" // Default for unmapped device types
@@ -392,7 +445,20 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
           if (trait.lockState == DoorLockTrait.DlLockState.Locked) "Locked" else "Unlocked"
         }
 
-        is FanControl -> trait.fanMode?.toString() ?: "Unknown"
+        is FanControl -> {
+          val fanMode = trait.fanMode
+          val percentSetting = trait.percentSetting
+          when {
+            fanMode != null -> fanMode.toString()
+            percentSetting != null -> when {
+              percentSetting == 0.toUByte() -> "Off"
+              percentSetting <= 33.toUByte() -> "Low"
+              percentSetting <= 66.toUByte() -> "Medium"
+              else -> "High"
+            }
+            else -> "Unknown"
+          }
+        }
         is LevelControl -> {
           trait.currentLevel.toString()
         }
@@ -435,12 +501,17 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
         }
 
         is WindowCovering -> {
-          val targetPercent100ths = trait.targetPositionLiftPercent100ths ?: 0u
-          val openPercentage = 100 - (targetPercent100ths.toInt() / 100)
-          if (openPercentage == 0) {
-            "Closed"
+          val currentPercent100ths = trait.currentPositionLiftPercent100ths ?: 0u
+          val targetPercent100ths = trait.targetPositionLiftPercent100ths
+          val currentOpen = 100 - (currentPercent100ths.toInt() / 100)
+          val status = if (currentOpen == 0) "Closed" else "${currentOpen}% Open"
+
+          if (targetPercent100ths != null && targetPercent100ths != currentPercent100ths) {
+            val targetOpen = 100 - (targetPercent100ths.toInt() / 100)
+            val targetStatus = if (targetOpen == 0) "Closed" else "${targetOpen}% Open"
+            "$status (Target: $targetStatus)"
           } else {
-            "${openPercentage}% Open"
+            status
           }
         }
 

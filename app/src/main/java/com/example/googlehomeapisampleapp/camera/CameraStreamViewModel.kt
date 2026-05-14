@@ -34,6 +34,8 @@ import com.example.googlehomeapisampleapp.camera.livestreamplayer.LiveStreamPlay
 import com.example.googlehomeapisampleapp.camera.livestreamplayer.LiveStreamPlayerFactory
 import com.example.googlehomeapisampleapp.camera.livestreamplayer.OnOffController
 import com.example.googlehomeapisampleapp.camera.livestreamplayer.OnOffControllerFactory
+import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelinePresenter
+import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelineUiState
 import com.example.googlehomeapisampleapp.doorbell.DoorbellChimeController
 import com.example.googlehomeapisampleapp.doorbell.DoorbellChimeControllerFactory
 import com.google.home.HomeDevice
@@ -55,6 +57,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -70,6 +73,8 @@ open class CameraStreamViewModel @Inject internal constructor(
   private val onOffControllerFactory: OnOffControllerFactory,
   private val cameraAvStreamManagementControllerFactory: CameraAvStreamManagementControllerFactory,
   private val doorbellChimeControllerFactory: DoorbellChimeControllerFactory,
+  private val recordingModeControllerFactory: RecordingModeControllerFactory,
+  private val cameraTimelinePresenter: CameraTimelinePresenter,
 ) : ViewModel() {
   private val TAG = "CameraStreamViewModel"
   private val TOGGLE_WAIT_TIME = 4000L
@@ -143,6 +148,28 @@ open class CameraStreamViewModel @Inject internal constructor(
       .flatMapLatest { it?.externalChimeType ?: flowOf(ChimeTrait.ExternalChimeType.Electronic) }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), ChimeTrait.ExternalChimeType.Electronic)
 
+  // Recording mode controller
+  private val _recordingModeController = MutableStateFlow<RecordingModeController?>(null)
+
+  /**
+   * Emits the full list of recording mode options for this device, each
+   * annotated with its availability and a human-readable label.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val recordingModeOptions: StateFlow<List<RecordingModeOption>> =
+    _recordingModeController
+      .flatMapLatest { it?.recordingModeOptions ?: flowOf(emptyList()) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
+  /**
+   * Emits the index of the currently active recording mode, or null if unavailable.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val selectedRecordingModeIndex: StateFlow<Int?> =
+    _recordingModeController
+      .flatMapLatest { it?.selectedRecordingModeIndex ?: flowOf(null) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+
   // --- UI State Flows ---
   @OptIn(ExperimentalCoroutinesApi::class)
   val isRecording: StateFlow<Boolean> = _onOffController
@@ -208,6 +235,24 @@ open class CameraStreamViewModel @Inject internal constructor(
   val state: StateFlow<CameraStreamState> = _state
 
   private var surface: Surface? = null
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val cameraTimelineUiState: StateFlow<CameraTimelineUiState?> =
+    flow {
+      emit(deviceDeferred.await())
+    }
+      .flatMapLatest { device ->
+        Log.d(TAG, "Timeline: Starting presenter for device ${device.id.id}")
+        cameraTimelinePresenter.present(
+          deviceId = device.id.id,
+          initialTimestamp = null,
+        )
+      }
+      .stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+      )
 
   // --- Commands ---
 
@@ -301,6 +346,18 @@ open class CameraStreamViewModel @Inject internal constructor(
     }
   }
 
+  /**
+   * Updates the camera's recording mode (CVR, EBR, ETR, Still Images, Live View, Disabled).
+   *
+   * @param index The index of the selected mode from [recordingModeOptions].
+   */
+  fun setRecordingMode(index: Int) {
+    val controller = _recordingModeController.value ?: return
+    viewModelScope.launch {
+      controller.setRecordingMode(index)
+    }
+  }
+
   @OptIn(ExperimentalCoroutinesApi::class)
   fun setDevice(device: HomeDevice) {
     val currentDevice = if (deviceDeferred.isCompleted) deviceDeferred.getCompleted() else null
@@ -351,6 +408,7 @@ open class CameraStreamViewModel @Inject internal constructor(
     val controller = onOffControllerFactory.create(device)
     _onOffController.value = controller
     _cameraAvStreamManagementController.value = cameraAvStreamManagementControllerFactory.create(device)
+    _recordingModeController.value = recordingModeControllerFactory.create(device)
 
     val player = liveStreamPlayerFactory.createPlayerFromDevice(device, viewModelScope, micGranted)
     _liveStreamPlayer.value = player

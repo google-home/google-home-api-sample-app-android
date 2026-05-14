@@ -25,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -40,7 +42,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,7 +52,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -73,6 +73,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.googlehomeapisampleapp.RuntimePermissionsManager
+import com.example.googlehomeapisampleapp.camera.timeline.CameraTimeline
+import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelineUiState
 import com.google.home.google.ChimeTrait
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +93,10 @@ fun CameraStreamView(
   isChimeToggleSupported: Boolean = false,
   isChimeEnabled: Boolean = false,
   chimeType: ChimeTrait.ExternalChimeType = ChimeTrait.ExternalChimeType.Electronic,
+  cameraTimelineUiState: CameraTimelineUiState? = null,
+  recordingModeOptions: List<RecordingModeOption> = emptyList(),
+  selectedRecordingModeIndex: Int? = null,
+  onSetRecordingMode: (Int) -> Unit = {},
   onTurnCameraOn: (Boolean) -> Unit = {},
   onSetTalkback: (Boolean) -> Unit = {},
   onSetAudioRecording: (Boolean) -> Unit = {},
@@ -137,22 +143,50 @@ fun CameraStreamView(
     containerColor = Color.Black
   ) { _ ->
     Column(modifier = Modifier.fillMaxSize()) {
-      Box(
-        modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f),
+      BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
       ) {
-        PunchThroughSurface(
-          isVisible = isCurrentlyStreaming,
-          onSurfaceCreated = onSurfaceCreated,
-          onSurfaceDestroyed = onSurfaceDestroyed,
-          modifier = Modifier.fillMaxSize()
+        val screenMaxHeight = maxHeight
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .run {
+              if (cameraTimelineUiState != null) {
+                // When timeline is present, cap video at 50% of screen height
+                heightIn(max = screenMaxHeight * 0.5f)
+              } else {
+                // When no timeline, use original 4:3 aspect ratio
+                aspectRatio(4f / 3f)
+              }
+            },
+          contentAlignment = Alignment.Center
+        ) {
+          PunchThroughSurface(
+            isVisible = isCurrentlyStreaming,
+            onSurfaceCreated = onSurfaceCreated,
+            onSurfaceDestroyed = onSurfaceDestroyed,
+            modifier = Modifier.fillMaxSize()
+          )
+          LiveStreamOverlay(playerState, isCurrentlyStreaming, onRetry)
+        }
+      }
+      if (cameraTimelineUiState != null) {
+        CameraTimeline(
+          uiState = cameraTimelineUiState,
+          modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
         )
-        LiveStreamOverlay(playerState, isCurrentlyStreaming, onRetry)
       }
 
       if (isTalkbackSupported && isCurrentlyStreaming) {
-        Spacer(modifier = Modifier.height(32.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.Center
+        ) {
           MicrophoneOverlay(
             isEnabled = isTalkbackEnabled,
             onToggle = { requestedEnabled ->
@@ -167,7 +201,17 @@ fun CameraStreamView(
       }
 
       Box(
-        modifier = Modifier.fillMaxWidth().weight(1f).padding(26.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .run {
+            if (cameraTimelineUiState == null) {
+              // When no timeline, give FAB its own weighted space
+              weight(1f).padding(26.dp)
+            } else {
+              // When timeline is present, just add padding
+              padding(26.dp)
+            }
+          },
         contentAlignment = Alignment.BottomEnd
       ) {
         FloatingActionButton(onClick = { showBottomSheet = true }) {
@@ -202,6 +246,48 @@ fun CameraStreamView(
               CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             } else {
               Switch(checked = isAudioRecording, onCheckedChange = onSetAudioRecording, enabled = canToggleAudio)
+            }
+          }
+        )
+
+        // RECORDING MODE
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+          "Recording Settings",
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        val availableModes = recordingModeOptions.filter { it.available }
+        val currentMode = recordingModeOptions.firstOrNull { it.index == selectedRecordingModeIndex }
+        var showRecordingModeMenu by remember { mutableStateOf(false) }
+
+        ListItem(
+          headlineContent = { Text("Recording Mode") },
+          supportingContent = {
+            Text("Current: ${currentMode?.readableString ?: "Unknown"}")
+          },
+          modifier = Modifier.clickable(enabled = availableModes.isNotEmpty()) {
+            showRecordingModeMenu = true
+          },
+          trailingContent = {
+            Box {
+              Icon(Icons.Default.ChevronRight, null)
+              DropdownMenu(
+                expanded = showRecordingModeMenu,
+                onDismissRequest = { showRecordingModeMenu = false }
+              ) {
+                availableModes.forEach { option ->
+                  DropdownMenuItem(
+                    text = { Text(option.readableString) },
+                    onClick = {
+                      onSetRecordingMode(option.index)
+                      showRecordingModeMenu = false
+                    }
+                  )
+                }
+              }
             }
           }
         )
