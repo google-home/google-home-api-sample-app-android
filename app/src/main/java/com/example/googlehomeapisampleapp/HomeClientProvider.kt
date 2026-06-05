@@ -60,6 +60,7 @@ class HomeClientProvider @Inject constructor(
     synchronized(this) {
       if (homeClient == null) {
         Log.d(TAG, "create a new HomeClient instance since homeClient is null")
+        Log.d(TAG, "getClient: homeConfig.homePlatformScope: ${homeConfig.homePlatformScope}")
         homeClient = createHomeClient("", homeConfig)
       }
       return homeClient!!
@@ -78,8 +79,12 @@ class HomeClientProvider @Inject constructor(
     val config = HomeConfig(
       coroutineContext = Dispatchers.IO,
       factoryRegistry = factoryRegistry,
-      serverClientId = serverClientId
+      serverClientId = serverClientId,
+      // If you are not using advanced camera features, you should continue to use the original
+      // scope by changing this to HOME_PLATFORM_SCOPE_VERSION_1.
+      homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_2
     )
+    Log.d(TAG, "switchAccount: config.homePlatformScope: ${config.homePlatformScope}")
     Log.i(TAG, "AccountManager switching account to $userId")
     homeClient = createHomeClient(userId, config)
   }

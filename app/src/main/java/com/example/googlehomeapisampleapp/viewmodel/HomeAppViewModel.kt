@@ -39,6 +39,7 @@ import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFacto
 import com.example.googlehomeapisampleapp.MainActivity
 import com.example.googlehomeapisampleapp.history.HistoryEventUi
 import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
+import com.example.googlehomeapisampleapp.history.HomeBriefCameraEvent
 import com.example.googlehomeapisampleapp.history.HomeHistoryPagingSource
 import com.example.googlehomeapisampleapp.history.toUiDataModel
 import com.example.googlehomeapisampleapp.repository.AutomationsRepository
@@ -52,6 +53,7 @@ import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.home.HomeBriefsPage
 import com.google.home.Structure
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.automation.CommandCandidate
@@ -59,6 +61,7 @@ import com.google.home.automation.DraftAutomation
 import com.google.home.automation.NodeCandidate
 import com.google.home.automation.UnknownDeviceType
 import com.google.home.getHistoryManager
+import com.google.home.getHomeBriefsManager
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -125,6 +128,16 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   val selectedHistoryDeviceVM = _selectedHistoryDeviceVM.asStateFlow()
   private val _selectedVideoEvent = MutableStateFlow<HistoryUiDataModel.CameraEvent?>(null)
   val selectedVideoEvent = _selectedVideoEvent.asStateFlow()
+
+  // HomeBriefs state
+  /** The latest fetched list of Home Briefs for the selected structure. */
+  private val _homeBriefs =
+    MutableStateFlow<List<HistoryUiDataModel.HomeBriefEvent>>(emptyList())
+  val homeBriefs: StateFlow<List<HistoryUiDataModel.HomeBriefEvent>> = _homeBriefs.asStateFlow()
+
+  /** True while a [loadHomeBriefs] fetch is in progress. */
+  private val _homeBriefsLoading = MutableStateFlow(false)
+  val homeBriefsLoading: StateFlow<Boolean> = _homeBriefsLoading.asStateFlow()
 
   @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
   val historyFlow: Flow<PagingData<HistoryEventUi>> = combine(
@@ -284,9 +297,9 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
           if (isSignedIn) {
             structuresJob = viewModelScope.launch { subscribeToStructures() }
           } else {
-          Log.d(TAG, "Cancel the job to subscribe to structure")
+            Log.d(TAG, "Cancel the job to subscribe to structure")
+          }
         }
-      }
     }
   }
 
@@ -302,8 +315,11 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
       structureVMs.emit(structureVMList)
 
       // If a structure isn't selected yet, select the first structure from the list:
-      if (selectedStructureVM.value == null && structureVMList.isNotEmpty())
+      if (selectedStructureVM.value == null && structureVMList.isNotEmpty()) {
         selectedStructureVM.emit(structureVMList.first())
+        // Load HomeBriefs once the first structure is available
+        loadHomeBriefs()
+      }
     }
   }
 
@@ -598,6 +614,70 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   /** Closes the video player screen and returns to the history list. */
   fun closeVideoPlayer() {
     _selectedVideoEvent.value = null
+  }
+
+  /**
+   * Opens the video player for a HomeBrief camera event clip.
+   * Maps [HomeBriefCameraEvent] to [HistoryUiDataModel.CameraEvent] and reuses
+   * the existing [_selectedVideoEvent] state so the View only manages one player.
+   */
+  fun openHomeBriefVideo(event: HomeBriefCameraEvent) {
+    _selectedVideoEvent.value = HistoryUiDataModel.CameraEvent(
+      eventId = event.sessionId,
+      timestamp = event.startTime ?: java.time.Instant.EPOCH,
+      entityName = "Camera Clip",
+      eventType = com.example.googlehomeapisampleapp.history.HistoryUiEventType.Unknown,
+      mediaUrl = com.example.googlehomeapisampleapp.history.MediaUrl(
+        previewUrl = event.previewUrl,
+        mp4DownloadUrl = event.previewUrl,
+      ),
+      deviceId = event.entityObjectId.id,
+    )
+  }
+
+  /**
+   * Fetches the latest page of Home Briefs for the currently selected structure
+   * and exposes them via [homeBriefs]. Briefs are displayed pinned at the top of
+   * the activity feed, above camera history items.
+   *
+   * Non-fatal on error: the history feed still shows camera events if briefs are
+   * unavailable (e.g. feature not enabled for this account, trait offline).
+   * Guarded by [_homeBriefsLoading] to prevent concurrent fetches.
+   */
+  @OptIn(HomeExperimentalApi::class)
+  fun loadHomeBriefs() {
+    val structure = selectedStructureVM.value?.structure ?: run {
+      Log.w(TAG, "loadHomeBriefs: no structure selected, skipping")
+      return
+    }
+    if (_homeBriefsLoading.value) {
+      Log.d(TAG, "loadHomeBriefs: already loading, skipping")
+      return
+    }
+
+    viewModelScope.launch {
+      _homeBriefsLoading.value = true
+      try {
+        Log.d(TAG, "loadHomeBriefs: calling getHomeBriefsManager()")
+        val manager = structure.getHomeBriefsManager()
+        Log.d(TAG, "loadHomeBriefs: manager obtained, calling getHomeBriefs()")
+        when (val page = manager.getHomeBriefs()) {
+          is HomeBriefsPage.Success -> {
+            _homeBriefs.value = page.result.map { it.toUiDataModel() }
+            Log.d(TAG, "loadHomeBriefs: loaded ${_homeBriefs.value.size} briefs")
+          }
+          is HomeBriefsPage.Error -> {
+            // Non-fatal: HomeBriefs is an enhancement on top of camera history.
+            // Expected when the feature is not enabled for this account.
+            Log.w(TAG, "loadHomeBriefs: API returned error — ${page.exception.message}")
+          }
+        }
+      } catch (e: Exception) {
+        Log.w(TAG, "loadHomeBriefs: unexpected exception", e)
+      } finally {
+        _homeBriefsLoading.value = false
+      }
+    }
   }
 
   private fun shouldAddDateSeparator(before: HistoryUiDataModel?, after: HistoryUiDataModel?): java.time.LocalDate? {

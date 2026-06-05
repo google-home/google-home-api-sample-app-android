@@ -67,4 +67,11 @@
   <string name="camera_settings_title">Camera Settings</string>
   <string name="camera_power_setting">Camera Power</string>
 
+  <string name="search_home" translatable="false">Search Home</string>
+  <string name="search_home_placeholder" translatable="false">Search for something...</string>
+  <string name="send_description" translatable="false">Send</string>
+  <string name="search_home_error" translatable="false">Response error: %1$s</string>
+  <string name="camera_content_description" translatable="false">Camera</string>
+  <string name="camera_thumbnail_description" translatable="false">Thumbnail</string>
+  <string name="search_home_camera_event_headline" translatable="false">Camera Event</string>
 </resources>

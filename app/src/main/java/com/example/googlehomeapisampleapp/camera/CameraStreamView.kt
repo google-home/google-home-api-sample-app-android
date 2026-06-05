@@ -22,6 +22,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,7 +40,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Settings
@@ -51,6 +54,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -76,6 +80,7 @@ import com.example.googlehomeapisampleapp.RuntimePermissionsManager
 import com.example.googlehomeapisampleapp.camera.timeline.CameraTimeline
 import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelineUiState
 import com.google.home.google.ChimeTrait
+import com.google.home.google.ZoneManagementTrait
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,6 +102,11 @@ fun CameraStreamView(
   recordingModeOptions: List<RecordingModeOption> = emptyList(),
   selectedRecordingModeIndex: Int? = null,
   onSetRecordingMode: (Int) -> Unit = {},
+  activityZones: List<ActivityZone> = emptyList(),
+  twoDCartesianMax: ZoneManagementTrait.TwoDCartesianVertexStruct? = null,
+  zoneUpdateStatus: ZoneUpdateStatus = ZoneUpdateStatus.Idle,
+  onAddActivityZone: () -> Unit = {},
+  onDeleteActivityZone: (Int) -> Unit = {},
   onTurnCameraOn: (Boolean) -> Unit = {},
   onSetTalkback: (Boolean) -> Unit = {},
   onSetAudioRecording: (Boolean) -> Unit = {},
@@ -289,6 +299,79 @@ fun CameraStreamView(
                 }
               }
             }
+          }
+        )
+
+        // --- ACTIVITY ZONES ---
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+          "Activity Zones",
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        val modifiableZones = activityZones.filter { it.modifiable }
+
+        if (modifiableZones.isEmpty()) {
+          ListItem(
+            headlineContent = { Text("No zones configured") },
+            supportingContent = { Text("Add a zone to filter events by area") }
+          )
+        } else {
+          modifiableZones.forEach { zone ->
+            ListItem(
+              headlineContent = { Text(zone.zoneName.ifBlank { "Zone ${zone.zoneId}" }) },
+              supportingContent = { Text("${zone.vertices.size} vertices · ${zone.color.displayName}") },
+              leadingContent = {
+                Box(
+                  modifier = Modifier
+                    .size(16.dp)
+                    .background(
+                      color = try {
+                        Color(android.graphics.Color.parseColor(zone.color.hexString))
+                      } catch (e: Exception) {
+                        Color.Gray
+                      },
+                      shape = CircleShape
+                    )
+                )
+              },
+              trailingContent = {
+                if (zoneUpdateStatus == ZoneUpdateStatus.InProgress) {
+                  CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                  IconButton(onClick = { zone.zoneId?.let { onDeleteActivityZone(it) } }) {
+                    Icon(
+                      Icons.Default.Delete,
+                      contentDescription = "Delete zone",
+                      tint = MaterialTheme.colorScheme.error
+                    )
+                  }
+                }
+              }
+            )
+          }
+        }
+
+        // There is currently a limit of 4 activity zones
+        val canAddZone = modifiableZones.size < 4 &&
+                zoneUpdateStatus != ZoneUpdateStatus.InProgress
+
+        ListItem(
+          headlineContent = {
+            Text(
+              text = if (modifiableZones.size >= 4) "Maximum 4 zones reached" else "Add Activity Zone",
+              color = if (canAddZone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            )
+          },
+          modifier = Modifier.clickable(enabled = canAddZone) { onAddActivityZone() },
+          leadingContent = {
+            Icon(
+              Icons.Default.Add,
+              contentDescription = null,
+              tint = if (canAddZone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            )
           }
         )
 

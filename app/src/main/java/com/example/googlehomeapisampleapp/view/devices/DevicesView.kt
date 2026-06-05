@@ -16,6 +16,7 @@ limitations under the License.
 package com.example.googlehomeapisampleapp.view.devices
 
 import android.content.Intent
+import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,6 +36,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -146,6 +148,7 @@ fun DevicesView(
   onRequestRoomSettings: (RoomViewModel) -> Unit = {},
   onRequestMoveDevice: (DeviceViewModel) -> Unit = {},
   onRequestAddHub: () -> Unit = {},
+  onSearchHome: () -> Unit = {},
 ) {
   val scope: CoroutineScope = rememberCoroutineScope()
 
@@ -185,7 +188,20 @@ fun DevicesView(
           )
         }
       },
-      rightButtons = listOf { DevicesAccountButton(homeAppVM) }
+      rightButtons = listOf(
+        {
+          IconButton(
+            onClick = onSearchHome,
+            enabled = selectedStructureVM != null
+          ) {
+            Icon(
+              imageVector = Icons.Default.AutoAwesome,
+              contentDescription = "Search Home"
+            )
+          }
+        },
+        { DevicesAccountButton(homeAppVM) }
+      )
     )
 
     Box(modifier = Modifier.weight(1f)) {

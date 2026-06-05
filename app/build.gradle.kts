@@ -17,8 +17,8 @@ android {
     applicationId = "com.example.googlehomeapisampleapp"
     minSdk = 29
     targetSdk = 36
-    versionCode = 41
-    versionName = "1.8.1"
+    versionCode = 42
+    versionName = "1.9.0"
 
     // Store your GCP project web client ID in local.properties and access it via project properties.
     // If local.properties doesn't exist in your app root folder, just create it

@@ -43,10 +43,12 @@ import com.google.home.google.MediaActivityState
 import com.google.home.google.Notification
 import com.google.home.google.PushAvStreamTransport
 import com.google.home.google.RecordingMode
+import com.google.home.google.SearchableHome
 import com.google.home.google.Time
 import com.google.home.google.VoiceStarter
 import com.google.home.google.Volume
 import com.google.home.google.WebRtcLiveView
+import com.google.home.google.ZoneManagement
 import com.google.home.matter.standard.AudioOutput
 import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.BooleanState
@@ -155,6 +157,7 @@ object HomeModule {
       OnOff,
       PushAvStreamTransport,
       RecordingMode,
+      SearchableHome,
       TemperatureControl,
       TemperatureMeasurement,
       Thermostat,
@@ -163,6 +166,7 @@ object HomeModule {
       VoiceStarter,
       WebRtcLiveView,
       WindowCovering,
+      ZoneManagement,
   )
 
   /**
@@ -190,7 +194,10 @@ object HomeModule {
   @Singleton
   fun provideHomeConfig(registry: FactoryRegistry): HomeConfig = HomeConfig(
     coroutineContext = Dispatchers.IO,
-    factoryRegistry = registry
+    factoryRegistry = registry,
+    // If you are not using advanced camera features, you should continue to use the original
+    // scope by changing this to HOME_PLATFORM_SCOPE_VERSION_1.
+    homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_2
   )
 
   /**

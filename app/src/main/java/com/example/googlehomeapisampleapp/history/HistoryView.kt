@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DirectionsCar
@@ -70,6 +71,12 @@ import java.time.format.DateTimeFormatter
 fun HistoryView(viewModel: HomeAppViewModel) {
     val historyItems = viewModel.historyFlow.collectAsLazyPagingItems()
     val selectedDevice by viewModel.selectedHistoryDeviceVM.collectAsStateWithLifecycle()
+    val homeBriefs by viewModel.homeBriefs.collectAsStateWithLifecycle()
+
+    // Fetch HomeBriefs every time the History screen is opened
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.loadHomeBriefs()
+    }
 
     BackHandler(enabled = true) {
         viewModel.clearHistorySelection()
@@ -97,7 +104,9 @@ fun HistoryView(viewModel: HomeAppViewModel) {
             // Event list
             HistoryList(
                 events = historyItems,
+                homeBriefs = homeBriefs,
                 onEventSelected = { event -> viewModel.openVideoPlayer(event) },
+                onHomeBriefEventClick = { event -> viewModel.openHomeBriefVideo(event) },
             )
         }
     }
@@ -106,13 +115,15 @@ fun HistoryView(viewModel: HomeAppViewModel) {
 @Composable
 fun HistoryList(
     events: LazyPagingItems<HistoryEventUi>,
+    homeBriefs: List<HistoryUiDataModel.HomeBriefEvent> = emptyList(),
     onEventSelected: (HistoryUiDataModel.CameraEvent) -> Unit,
+    onHomeBriefEventClick: (HomeBriefCameraEvent) -> Unit = {},
 ) {
     val errorPainter = rememberVectorPainter(Icons.Outlined.Image)
     val today = LocalDate.now()
 
     val isFinishedLoading = events.loadState.refresh is LoadState.NotLoading
-    val isEmpty = events.itemCount == 0
+    val isEmpty = events.itemCount == 0 && homeBriefs.isEmpty()
 
     if (isFinishedLoading && isEmpty) {
         Box(
@@ -141,12 +152,34 @@ fun HistoryList(
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize().background(Color.White)) {
+
+            // HomeBrief cards pinned at the top of the feed.
+            // No date separator needed — each card's own header shows the date.
+            if (homeBriefs.isNotEmpty()) {
+                items(
+                    items = homeBriefs,
+                    key = { it.briefId },
+                ) { brief ->
+                    HomeBriefCard(
+                        brief = brief,
+                        onEventClick = { event -> onHomeBriefEventClick(event) },
+                    )
+                }
+            }
+
+            // Camera / device history items
             items(
                 count = events.itemCount,
                 key = events.itemKey { it.id }
             ) { index ->
                 when (val item = events[index]) {
                     is HistoryEventUi.DateSeparatorModel -> DateSeparatorRow(item.date, today)
+                    is HistoryUiDataModel.HomeBriefEvent -> {
+                        HomeBriefCard(
+                            brief = item,
+                            onEventClick = { event -> onHomeBriefEventClick(event) },
+                        )
+                    }
                     is HistoryUiDataModel.CameraEvent -> {
                         HistoryItemRow(
                             uiModel = item,
@@ -238,12 +271,16 @@ private fun getEventMetadata(model: HistoryUiDataModel): Pair<String, ImageVecto
         is HistoryUiDataModel.DefaultEvent -> {
             (model.eventName ?: "Activity") to Icons.Outlined.History
         }
+        is HistoryUiDataModel.HomeBriefEvent -> {
+            "Home Brief" to Icons.Outlined.History
+        }
     }
 }
 
 @Composable
 fun DateSeparatorRow(date: LocalDate, today: LocalDate) {
-    val label = if (date == today) "Today" else if (date == today.minusDays(1)) "Yesterday" else date.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))
+    val label = if (date == today) "Today" else if (date == today.minusDays(1)) "Yesterday" else date.format(
+        DateTimeFormatter.ofPattern("EEEE, MMM d"))
     Text(
         text = label,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

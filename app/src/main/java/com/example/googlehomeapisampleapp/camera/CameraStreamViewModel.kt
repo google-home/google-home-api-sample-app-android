@@ -41,6 +41,7 @@ import com.example.googlehomeapisampleapp.doorbell.DoorbellChimeControllerFactor
 import com.google.home.HomeDevice
 import com.google.home.google.ChimeTrait
 import com.google.home.google.GoogleDoorbellDevice
+import com.google.home.google.ZoneManagementTrait
 import com.google.home.matter.standard.RootNodeDevice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
@@ -74,6 +75,7 @@ open class CameraStreamViewModel @Inject internal constructor(
   private val cameraAvStreamManagementControllerFactory: CameraAvStreamManagementControllerFactory,
   private val doorbellChimeControllerFactory: DoorbellChimeControllerFactory,
   private val recordingModeControllerFactory: RecordingModeControllerFactory,
+  private val activityZoneControllerFactory: ActivityZoneControllerFactory,
   private val cameraTimelinePresenter: CameraTimelinePresenter,
 ) : ViewModel() {
   private val TAG = "CameraStreamViewModel"
@@ -169,6 +171,24 @@ open class CameraStreamViewModel @Inject internal constructor(
     _recordingModeController
       .flatMapLatest { it?.selectedRecordingModeIndex ?: flowOf(null) }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+
+  // Activity Zone Controller
+  private val _activityZoneController = MutableStateFlow<ActivityZoneController?>(null)
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val activityZones: StateFlow<List<ActivityZone>> =
+    _activityZoneController
+      .flatMapLatest { it?.activityZones ?: flowOf(emptyList()) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val twoDCartesianMax: StateFlow<ZoneManagementTrait.TwoDCartesianVertexStruct?> =
+    _activityZoneController
+      .flatMapLatest { it?.twoDCartesianMax ?: flowOf(null) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+
+  private val _zoneUpdateStatus = MutableStateFlow<ZoneUpdateStatus>(ZoneUpdateStatus.Idle)
+  val zoneUpdateStatus: StateFlow<ZoneUpdateStatus> = _zoneUpdateStatus
 
   // --- UI State Flows ---
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -358,6 +378,48 @@ open class CameraStreamViewModel @Inject internal constructor(
     }
   }
 
+  /**
+   * Creates a new activity zone with default vertices covering ~60% of the camera frame,
+   * scaled to the device's twoDCartesianMax bounds.
+   */
+  fun addActivityZone() {
+    val controller = _activityZoneController.value ?: return
+    val max = twoDCartesianMax.value
+    // Use device max if available, otherwise fall back to common default (1920x1080)
+    val maxX = max?.x?.toInt() ?: 1920
+    val maxY = max?.y?.toInt() ?: 1080
+    val colorIndex = activityZones.value.count { it.modifiable } % ActivityZoneColorCycle.size
+
+    val zone = ActivityZone(
+      zoneName = "Zone ${activityZones.value.count { it.modifiable } + 1}",
+      color = ActivityZoneColorCycle[colorIndex],
+      maxX = maxX,
+      maxY = maxY,
+      vertices = listOf(
+        ActivityZoneVertex((maxX * 0.2).toInt(), (maxY * 0.2).toInt()),
+        ActivityZoneVertex((maxX * 0.8).toInt(), (maxY * 0.2).toInt()),
+        ActivityZoneVertex((maxX * 0.8).toInt(), (maxY * 0.8).toInt()),
+        ActivityZoneVertex((maxX * 0.2).toInt(), (maxY * 0.8).toInt()),
+      )
+    )
+
+    viewModelScope.launch {
+      _zoneUpdateStatus.value = ZoneUpdateStatus.InProgress
+      _zoneUpdateStatus.value = controller.addZone(zone)
+    }
+  }
+
+  /**
+   * Deletes the activity zone with the given [zoneId].
+   */
+  fun deleteActivityZone(zoneId: Int) {
+    val controller = _activityZoneController.value ?: return
+    viewModelScope.launch {
+      _zoneUpdateStatus.value = ZoneUpdateStatus.InProgress
+      _zoneUpdateStatus.value = controller.deleteZone(zoneId)
+    }
+  }
+
   @OptIn(ExperimentalCoroutinesApi::class)
   fun setDevice(device: HomeDevice) {
     val currentDevice = if (deviceDeferred.isCompleted) deviceDeferred.getCompleted() else null
@@ -409,6 +471,7 @@ open class CameraStreamViewModel @Inject internal constructor(
     _onOffController.value = controller
     _cameraAvStreamManagementController.value = cameraAvStreamManagementControllerFactory.create(device)
     _recordingModeController.value = recordingModeControllerFactory.create(device)
+    _activityZoneController.value = activityZoneControllerFactory.create(device)
 
     val player = liveStreamPlayerFactory.createPlayerFromDevice(device, viewModelScope, micGranted)
     _liveStreamPlayer.value = player

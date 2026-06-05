@@ -246,6 +246,11 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             val recordingModeOptions by cameraVm.recordingModeOptions.collectAsStateWithLifecycle()
             val selectedRecordingModeIndex by cameraVm.selectedRecordingModeIndex.collectAsStateWithLifecycle()
 
+            // Activity Zones
+            val activityZones by cameraVm.activityZones.collectAsStateWithLifecycle()
+            val twoDCartesianMax by cameraVm.twoDCartesianMax.collectAsStateWithLifecycle()
+            val zoneUpdateStatus by cameraVm.zoneUpdateStatus.collectAsStateWithLifecycle()
+
             CameraStreamView(
               playerState = playerState,
               isTalkbackSupported = isTalkbackSupported,
@@ -280,6 +285,13 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
               recordingModeOptions = recordingModeOptions,
               selectedRecordingModeIndex = selectedRecordingModeIndex,
               onSetRecordingMode = { index -> cameraVm.setRecordingMode(index) },
+
+              // Activity Zones
+              activityZones = activityZones,
+              twoDCartesianMax = twoDCartesianMax,
+              zoneUpdateStatus = zoneUpdateStatus,
+              onAddActivityZone = { cameraVm.addActivityZone() },
+              onDeleteActivityZone = { zoneId -> cameraVm.deleteActivityZone(zoneId) },
 
               paddingValues = PaddingValues(0.dp),
               onRetry = { cameraVm.restartInitialization() },

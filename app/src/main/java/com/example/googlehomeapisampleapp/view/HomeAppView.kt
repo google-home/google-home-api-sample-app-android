@@ -64,8 +64,11 @@ import com.example.googlehomeapisampleapp.AccountSwitchProxyActivity
 import com.example.googlehomeapisampleapp.MainActivity
 import com.example.googlehomeapisampleapp.commissioning.OtaUpdateScreen
 import com.example.googlehomeapisampleapp.commissioning.qrcodescanner.MatterQrCodeScanner
+import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
+import com.example.googlehomeapisampleapp.history.HistoryUiEventType
 import com.example.googlehomeapisampleapp.history.HistoryView
 import com.example.googlehomeapisampleapp.history.HistoryVideoPlayerScreen
+import com.example.googlehomeapisampleapp.history.MediaUrl
 import com.example.googlehomeapisampleapp.ui.theme.GoogleHomeAPISampleAppTheme
 import com.example.googlehomeapisampleapp.view.automations.ActionView
 import com.example.googlehomeapisampleapp.view.automations.AutomationView
@@ -74,6 +77,7 @@ import com.example.googlehomeapisampleapp.view.automations.CandidatesView
 import com.example.googlehomeapisampleapp.view.automations.DraftView
 import com.example.googlehomeapisampleapp.view.automations.StarterView
 import com.example.googlehomeapisampleapp.view.devices.DeviceView
+import com.example.googlehomeapisampleapp.searchablehome.SearchableHomeBottomSheetView
 import com.example.googlehomeapisampleapp.view.devices.DevicesView
 import com.example.googlehomeapisampleapp.view.hubs.HubDiscoveryView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
@@ -111,6 +115,8 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
   val roomSettingsFor = remember { mutableStateOf<RoomViewModel?>(null) }
   val moveDeviceFor = remember { mutableStateOf<DeviceViewModel?>(null) }
   val launchHubDiscovery = remember { mutableStateOf(false) }
+  val showSearchableHome = remember { mutableStateOf(false) }
+  val selectedStructureVM by homeAppVM.selectedStructureVM.collectAsState()
 
   val showQrCodeScanner by homeAppVM.showQrCodeScanner.collectAsStateWithLifecycle()
 
@@ -213,7 +219,8 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
         if (!isSignedIn) {
           WelcomeView(homeAppVM)
         }
-        // Video player screen — shown when a history event is tapped
+
+        // Video player screen — shown when a history event or HomeBrief thumbnail is tapped
         selectedVideoEvent?.let { event ->
           HistoryVideoPlayerScreen(
             event = event,
@@ -249,7 +256,8 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
             onRequestCreateRoom = { showCreateRoom.value = true },
             onRequestRoomSettings = { room -> roomSettingsFor.value = room },
             onRequestMoveDevice = { device -> moveDeviceFor.value = device },
-            onRequestAddHub = { homeAppVM.startHubDiscovery(); launchHubDiscovery.value = true }
+            onRequestAddHub = { homeAppVM.startHubDiscovery(); launchHubDiscovery.value = true },
+            onSearchHome = { showSearchableHome.value = true }
           )
 
           HomeAppViewModel.NavigationTab.AUTOMATIONS -> AutomationsView(homeAppVM)
@@ -265,7 +273,7 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
         }
       }
 
-      // --- Room and Hub Dialogs ---
+      // Room and Hub Dialogs
       if (showCreateRoom.value) {
         val roomName = remember { mutableStateOf("") }
         AlertDialog(
@@ -408,6 +416,15 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
           HubDiscoveryView(
             hubDiscoveryViewModel = homeAppVM.hubDiscoveryViewModel,
             modifier = Modifier.padding(16.dp),
+          )
+        }
+      }
+
+      if (showSearchableHome.value) {
+        selectedStructureVM?.let { structure ->
+          SearchableHomeBottomSheetView(
+            structureId = structure.id,
+            onDismissRequest = { showSearchableHome.value = false }
           )
         }
       }

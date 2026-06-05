@@ -15,7 +15,10 @@ limitations under the License.
 package com.example.googlehomeapisampleapp.history
 
 import android.util.Log
+import com.google.home.BasicCameraEventDetails
+import com.google.home.HomeBrief
 import com.google.home.HistoryItem
+import com.google.home.Id
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.google.CameraHistory
 import com.google.home.google.CameraHistoryTrait
@@ -45,7 +48,60 @@ sealed interface HistoryUiDataModel : HistoryEventUi {
         val deviceId: String,
         val shortCaption: String? = null
     ) : HistoryUiDataModel
+
+    /**
+     * Represents a Home Brief (AI-generated daily summary) in the activity feed.
+     *
+     * @param briefId Unique identifier for this brief (used as stable list key).
+     * @param body The full AI-generated summary text.
+     * @param generateTime When the brief was generated; used as the display timestamp.
+     * @param keyCameraEvents Associated camera events with thumbnail/preview URLs.
+     */
+    data class HomeBriefEvent(
+        val briefId: String,
+        val body: String,
+        val generateTime: Instant?,
+        val keyCameraEvents: List<HomeBriefCameraEvent>,
+    ) : HistoryUiDataModel {
+        override val eventId: String get() = briefId
+        override val timestamp: Instant
+            get() = generateTime
+                ?: keyCameraEvents.mapNotNull { it.startTime }.maxOrNull()
+                ?: Instant.EPOCH
+        override val entityName: String get() = "Home Brief"
+    }
 }
+
+/**
+ * Lightweight camera event data carried inside a [HistoryUiDataModel.HomeBriefEvent].
+ * Contains only what the UI needs (thumbnail/preview URLs and timing).
+ */
+data class HomeBriefCameraEvent(
+    val sessionId: String,
+    val entityObjectId: Id,
+    val startTime: Instant?,
+    val previewUrl: String,
+    val thumbnailUrl: String,
+)
+
+/** Maps a SDK [BasicCameraEventDetails] to our UI model. */
+@OptIn(HomeExperimentalApi::class)
+fun BasicCameraEventDetails.toUiModel() = HomeBriefCameraEvent(
+    sessionId = sessionId,
+    entityObjectId = entityObjectId,
+    startTime = startTime,
+    previewUrl = previewUrl,
+    thumbnailUrl = thumbnailUrl,
+)
+
+/** Maps a SDK [HomeBrief] to [HistoryUiDataModel.HomeBriefEvent]. */
+@OptIn(HomeExperimentalApi::class)
+fun HomeBrief.toUiDataModel() = HistoryUiDataModel.HomeBriefEvent(
+    briefId = id.id,
+    body = body,
+    generateTime = generateTime,
+    keyCameraEvents = keyCameraEvents.map { it.toUiModel() },
+)
 
 /**
  * Shared subtitle formatting used in both HistoryView and HistoryVideoPlayerScreen.
