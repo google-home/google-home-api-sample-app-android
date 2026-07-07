@@ -172,7 +172,15 @@ private val predefinedAutomations = listOf(
     isAvailable = { it.hasRequiredDevicesForLightAndTVPeriodic }
   ) { scope, vm ->
     scope.launch { vm.showPredefinedLightAndTVPeriodicDraft() }
-  }
+  },
+  PredefinedAutomation(
+    title = "Camera Scene Detected Automation",
+    description = "Turns on a light when a person is detected by the camera (natural language).",
+    automationType = DraftViewModel.AutomationType.CUSTOM,
+    isAvailable = { it.hasCameraAndLight }
+  ) { scope, vm ->
+    scope.launch { vm.showPredefinedCameraSceneDetectedLightDraft() }
+  },
 )
 
 @Composable

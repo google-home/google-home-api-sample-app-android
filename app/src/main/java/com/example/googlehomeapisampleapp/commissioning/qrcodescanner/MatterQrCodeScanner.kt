@@ -19,6 +19,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -31,6 +32,12 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -39,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -55,11 +63,16 @@ private const val TAG = "MatterQrCodeScanner"
 fun MatterQrCodeScanner(
   onQrCodeScanned: (String) -> Unit,
   onPermissionDenied: () -> Unit,
+  onClose: () -> Unit,
 ) {
   val context = LocalContext.current
   val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
   val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
   val previewView = remember { PreviewView(context) }
+  // navigates back to the previous screen instead of exiting/minimizing the app.
+  BackHandler(enabled = true) {
+    onClose()
+  }
 
   // Check and request Camera Permission
   val permissionLauncher = rememberLauncherForActivityResult(
@@ -109,6 +122,20 @@ fun MatterQrCodeScanner(
       modifier = Modifier.fillMaxSize(),
       factory = { previewView }
     )
+    // Back button overlay
+    IconButton(
+      onClick = onClose,
+      modifier = Modifier
+        .align(Alignment.TopStart)
+        .statusBarsPadding()
+        .padding(top = 16.dp, start = 16.dp)
+    ) {
+      Icon(
+        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+        contentDescription = "Back",
+        tint = Color.White
+      )
+    }
     // Simple text overlay for user guidance
     Text("Point camera at Matter QR Code", color = Color.White)
   }

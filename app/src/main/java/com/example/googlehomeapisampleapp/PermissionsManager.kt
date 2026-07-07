@@ -17,6 +17,8 @@ package com.example.googlehomeapisampleapp
 
 import android.util.Log
 import androidx.activity.ComponentActivity
+import com.google.home.ConsentScreenOptions
+import com.google.home.ForcePermissionFlow
 import com.google.home.HomeClient
 import com.google.home.HomeException
 import com.google.home.PermissionsResult
@@ -38,6 +40,9 @@ class PermissionsManager(
   companion object {
     const val TAG = "PermissionsManager"
   }
+
+  // Provider for active structure ID
+  var currentStructureIdProvider: (() -> String?)? = null
 
   var isSignedIn: MutableStateFlow<Boolean> = MutableStateFlow(false)
   private val _isPermissionUpdated = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -86,11 +91,27 @@ class PermissionsManager(
     checkPermissions()
   }
 
-  fun requestPermissions(isForceRefresh: Boolean = false) {
+  fun requestPermissions(
+    isForceRefresh: Boolean = false,
+    consentScreenOptions: ConsentScreenOptions? = null,
+  ) {
     scope.launch {
       try {
-        // Request permissions from the Permissions API and record the result:
-        val result: PermissionsResult = client.requestPermissions(forceLaunch = true)
+        // Use passed options or fallback to active structure ID
+        val optionsToUse = consentScreenOptions
+          ?: run {
+            val currentStructureId = currentStructureIdProvider?.invoke()
+            ConsentScreenOptions(
+              structureId = currentStructureId,
+              allowedStructureIds = emptyList(),
+              isAllowStructureChange = !currentStructureId.isNullOrEmpty()
+            )
+          }
+        // Request permissions using ForcePermissionFlow:
+        val result: PermissionsResult = client.requestPermissions(
+          ForcePermissionFlow.FORCE_LAUNCH,
+          consentScreenOptions = optionsToUse
+        )
         // Adjust the sign-in status according to permission result:
         if (result.status == PermissionsResultStatus.SUCCESS) {
           Log.d(TAG, "PermissionsResultStatus.SUCCESS")
@@ -100,7 +121,6 @@ class PermissionsManager(
           // state won't change. So it is required to force emit a permission update event.
           Log.i(TAG, "forceRefresh after requestPermissions")
           _isPermissionUpdated.emit(Unit)
-
         }
         // Report the permission result:
         reportPermissionResult(result)

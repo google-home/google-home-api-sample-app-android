@@ -15,6 +15,7 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -22,6 +23,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import com.example.googlehomeapisampleapp.cloudlinking.CloudLinkingAuthCoordinator
+import com.example.googlehomeapisampleapp.cloudlinking.CurrentStructureRepository
 import com.example.googlehomeapisampleapp.view.HomeAppView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,22 +33,23 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * The main activity of the Google Home API Sample App.
- * This activity is responsible for initializing the [HomeApp] and displaying the [HomeAppView].
+ * The main activity of the Google Home API Sample App. This activity is responsible for
+ * initializing the [HomeApp] and displaying the [HomeAppView].
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-  @Inject
-  lateinit var homeClientProvider: HomeClientProvider
+  @Inject lateinit var homeClientProvider: HomeClientProvider
+  @Inject lateinit var currentStructureRepository: CurrentStructureRepository
+  @Inject lateinit var authCoordinator: CloudLinkingAuthCoordinator
   lateinit var homeAppVM: HomeAppViewModel
 
   /**
    * Called when the activity is first created.
    *
-   * @param savedInstanceState If the activity is being re-initialized after
-   *     previously being shut down then this Bundle contains the data it most
-   *     recently supplied in [onSaveInstanceState]. Otherwise it is null.
+   * @param savedInstanceState If the activity is being re-initialized after previously being shut
+   *   down then this Bundle contains the data it most recently supplied in [onSaveInstanceState].
+   *   Otherwise it is null.
    */
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -56,15 +60,13 @@ class MainActivity : ComponentActivity() {
     // Initialize the main app class to interact with the APIs:
     val homeApp = HomeApp(baseContext, lifecycleScope, this, homeClientProvider)
     Log.d(TAG, "homeApp created")
-    homeAppVM = HomeAppViewModel(homeApp)
+    homeAppVM = HomeAppViewModel(homeApp, currentStructureRepository)
     Log.d(TAG, "homeAppVM created")
 
     // Connect commissioning callback to trigger OTA screen
     homeApp.commissioningManager.onCameraCommissioned = {
       Log.d(TAG, "Camera commissioned - showing OTA screen")
-      runOnUiThread {
-        homeAppVM.showOtaScreen()
-      }
+      runOnUiThread { homeAppVM.showOtaScreen() }
     }
     // Call to make the app allocate the entire screen:
     enableEdgeToEdge()
@@ -75,9 +77,7 @@ class MainActivity : ComponentActivity() {
     val isFromAccountSwitch = intent.getBooleanExtra(EXTRA_FROM_ACCOUNT_SWITCH, false)
     Log.i(TAG, "Launched from account switch: $isFromAccountSwitch")
 
-
-    if (savedInstanceState != null)
-      return
+    if (savedInstanceState != null) return
     // Activity is fresh and newly created
     if (isFromAccountSwitch) {
       // After new account signed-in, it still needs to request the permission.
@@ -93,6 +93,13 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
+    authCoordinator.onOAuthRedirect(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    Log.d(TAG, "onNewIntent received")
+    authCoordinator.onOAuthRedirect(intent)
   }
 
   companion object {
@@ -143,16 +150,16 @@ class MainActivity : ComponentActivity() {
 }
 
 /*  Logger - Utility class for logging and displaying messages
-*   This helps us to communicate unexpected states on screen, as well as to record them appropriately
-*   so when it comes you to report an issue we can make sure the states are captured in adb logs.
-*  */
+ *   This helps us to communicate unexpected states on screen, as well as to record them appropriately
+ *   so when it comes you to report an issue we can make sure the states are captured in adb logs.
+ *  */
 class Logger(val activity: ComponentActivity) {
 
   enum class LogLevel {
     ERROR,
     WARNING,
     INFO,
-    DEBUG
+    DEBUG,
   }
 
   fun log(caller: Any, message: String, level: LogLevel) {

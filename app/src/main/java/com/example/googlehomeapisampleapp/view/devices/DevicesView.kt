@@ -16,7 +16,6 @@ limitations under the License.
 package com.example.googlehomeapisampleapp.view.devices
 
 import android.content.Intent
-import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,9 +77,12 @@ const val TAG = "DevicesView"
  * Composable for displaying the account button and overflow menu in the Devices view.
  *
  * @param homeAppVM The [HomeAppViewModel] providing the data and logic.
+ * @param onNavigateToUserManagement Callback to navigate to the User Management screen.
  */
 @Composable
-fun DevicesAccountButton(homeAppVM: HomeAppViewModel) {
+fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
+                         onNavigateToUserManagement: () -> Unit = {}
+) {
   val context = LocalContext.current
   var expanded by remember { mutableStateOf(false) }
   /**
@@ -88,22 +90,19 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel) {
    * - Account Icon Button: triggers a permission request using PermissionsManager.
    * - Overflow Menu: opens a dropdown with a "Revoke Permissions" option.
    *
-   * Selecting "Revoke Permissions" launches an intent to Google’s account management
-   * page for manually revoking app access.
-   *
+   * Selecting "Revoke Permissions" launches an intent to Google’s account management page for
+   * manually revoking app access.
    */
   Row {
     IconButton(
-      onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions(true) },
-      modifier = Modifier
-        .size(48.dp)
-        .background(Color.Transparent)
+      onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions(isForceRefresh = true) },
+      modifier = Modifier.size(48.dp).background(Color.Transparent),
     ) {
       Icon(
         imageVector = Icons.Default.AccountCircle,
         contentDescription = "",
         modifier = Modifier.fillMaxSize(),
-        tint = MaterialTheme.colorScheme.primary
+        tint = MaterialTheme.colorScheme.primary,
       )
     }
 
@@ -116,17 +115,31 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel) {
         text = { Text("Revoke Permissions") },
         onClick = {
           expanded = false
-          val intent = Intent(
-            Intent.ACTION_VIEW,
-            "https://myaccount.google.com/u/2/connections?utm_source=3p".toUri()
-          )
+          val intent =
+            Intent(
+              Intent.ACTION_VIEW,
+              "https://myaccount.google.com/u/2/connections?utm_source=3p".toUri(),
+            )
           context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-
-        }
+        },
       )
       DropdownMenuItem(
         text = { Text("Google Sign-In") },
         onClick = { homeAppVM.signInWithGoogleAccount(context) },
+      )
+      DropdownMenuItem(
+        text = { Text("Link GHP Playground") },
+        onClick = {
+          expanded = false
+          homeAppVM.openCloudLinkingSheet()
+        },
+      )
+      DropdownMenuItem(
+        text = { Text("User Management") },
+        onClick = {
+          expanded = false
+          onNavigateToUserManagement()
+        }
       )
     }
   }
@@ -140,6 +153,7 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel) {
  * @param onRequestRoomSettings Callback for requesting to view/edit room settings.
  * @param onRequestMoveDevice Callback for requesting to move a device to a different room.
  * @param onRequestAddHub Callback for requesting to add a new hub.
+ * @param onNavigateToUserManagement Callback to navigate to the User Management screen.
  */
 @Composable
 fun DevicesView(
@@ -149,6 +163,7 @@ fun DevicesView(
   onRequestMoveDevice: (DeviceViewModel) -> Unit = {},
   onRequestAddHub: () -> Unit = {},
   onSearchHome: () -> Unit = {},
+  onNavigateToUserManagement: () -> Unit = {},
 ) {
   val scope: CoroutineScope = rememberCoroutineScope()
 
@@ -164,7 +179,6 @@ fun DevicesView(
   var isCommissioningMenuVisible by remember { mutableStateOf(false) }
 
   Column(modifier = Modifier.fillMaxHeight()) {
-
     DevicesTopBar(
       title = "",
       leftButton = {
@@ -177,35 +191,29 @@ fun DevicesView(
             onClick = {
               plusMenuExpanded = false
               onRequestCreateRoom()
-            }
+            },
           )
           DropdownMenuItem(
             text = { Text("Add Hub") },
             onClick = {
               plusMenuExpanded = false
               onRequestAddHub()
-            }
+            },
           )
         }
       },
-      rightButtons = listOf(
-        {
-          IconButton(
-            onClick = onSearchHome,
-            enabled = selectedStructureVM != null
-          ) {
-            Icon(
-              imageVector = Icons.Default.AutoAwesome,
-              contentDescription = "Search Home"
-            )
-          }
-        },
-        { DevicesAccountButton(homeAppVM) }
-      )
+      rightButtons =
+        listOf(
+          {
+            IconButton(onClick = onSearchHome, enabled = selectedStructureVM != null) {
+              Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Search Home")
+            }
+          },
+          { DevicesAccountButton(homeAppVM, onNavigateToUserManagement) },
+        ),
     )
 
     Box(modifier = Modifier.weight(1f)) {
-
       Column {
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
           if (structureVMs.size > 1) {
@@ -223,14 +231,15 @@ fun DevicesView(
           Box {
             DropdownMenu(
               expanded = structurePickerExpanded,
-              onDismissRequest = { structurePickerExpanded = false }) {
+              onDismissRequest = { structurePickerExpanded = false },
+            ) {
               for (structure in structureVMs) {
                 DropdownMenuItem(
                   text = { Text(structure.name) },
                   onClick = {
-                    scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
+                    homeAppVM.setSelectedStructure(structure)
                     structurePickerExpanded = false
-                  }
+                  },
                 )
               }
             }
@@ -238,50 +247,47 @@ fun DevicesView(
         }
 
         Column(
-          modifier = Modifier
-            .verticalScroll(rememberScrollState())
-            .weight(weight = 1f, fill = false)
+          modifier =
+            Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)
         ) {
           DeviceListComponent(
             homeAppVM = homeAppVM,
             onRoomClick = onRequestRoomSettings,
-            onDeviceLongPress = onRequestMoveDevice
+            onDeviceLongPress = onRequestMoveDevice,
           )
         }
       }
 
-      Box(
-        modifier = Modifier
-          .padding(16.dp)
-          .align(Alignment.BottomEnd)
-      ) {
+      Box(modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) {
         Button(onClick = { isCommissioningMenuVisible = true }) {
           Text(stringResource(R.string.devices_button_add))
         }
         DropdownMenu(
           expanded = isCommissioningMenuVisible,
-          onDismissRequest = { isCommissioningMenuVisible = false }
+          onDismissRequest = { isCommissioningMenuVisible = false },
         ) {
           DropdownMenuItem(
             text = { Text("Add Device to Google Fabric Only") },
             onClick = {
               isCommissioningMenuVisible = false
               homeAppVM.homeApp.commissioningManager.requestCommissioning(FabricType.GOOGLE_FABRIC)
-            }
+            },
           )
           DropdownMenuItem(
             text = { Text("Add Device to Google & 3P Fabric") },
             onClick = {
               isCommissioningMenuVisible = false
-              homeAppVM.homeApp.commissioningManager.requestCommissioning(FabricType.THIRD_PARTY_FABRIC)
-            }
+              homeAppVM.homeApp.commissioningManager.requestCommissioning(
+                FabricType.THIRD_PARTY_FABRIC
+              )
+            },
           )
           DropdownMenuItem(
             text = { Text("Add Google Camera") },
             onClick = {
               isCommissioningMenuVisible = false
               homeAppVM.onCommissionCamera()
-            }
+            },
           )
         }
       }
@@ -310,12 +316,11 @@ fun DeviceListItem(
   val deviceName: String = deviceVM.name.collectAsState().value
 
   Column(
-    Modifier
-      .padding(horizontal = 24.dp, vertical = 8.dp)
+    Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
       .fillMaxWidth()
       .combinedClickable(
         onClick = { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } },
-        onLongClick = { onLongPress(deviceVM) }
+        onLongClick = { onLongPress(deviceVM) },
       )
   ) {
     Text(deviceName, fontSize = 20.sp)
@@ -334,10 +339,9 @@ fun RoomListItem(roomVM: RoomViewModel, onClick: (RoomViewModel) -> Unit) {
   val roomName by roomVM.name.collectAsState()
 
   Column(
-    Modifier
-      .padding(horizontal = 16.dp, vertical = 8.dp)
-      .fillMaxWidth()
-      .clickable { onClick(roomVM) }
+    Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clickable {
+      onClick(roomVM)
+    }
   ) {
     Text(roomName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
   }
@@ -359,8 +363,7 @@ fun DeviceListComponent(
   val selectedStructureVM: StructureViewModel =
     homeAppVM.selectedStructureVM.collectAsState().value ?: return
 
-  val selectedRoomVMs: List<RoomViewModel> =
-    selectedStructureVM.roomVMs.collectAsState().value
+  val selectedRoomVMs: List<RoomViewModel> = selectedStructureVM.roomVMs.collectAsState().value
 
   val selectedDeviceVMsWithoutRooms: List<DeviceViewModel> =
     selectedStructureVM.deviceVMsWithoutRooms.collectAsState().value
@@ -378,18 +381,13 @@ fun DeviceListComponent(
 
     if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {
 
-      Column(
-        Modifier
-          .padding(horizontal = 16.dp, vertical = 8.dp)
-          .fillMaxWidth()
-      ) {
+      Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
         Text("Not in a room", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
       }
 
       for (deviceVM in selectedDeviceVMsWithoutRooms) {
         DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
       }
-
     }
   }
 }
@@ -407,43 +405,29 @@ fun DevicesTopBar(
   leftButton: (@Composable () -> Unit)? = null,
   rightButtons: List<@Composable () -> Unit>,
 ) {
-  Box(
-    Modifier
-      .height(64.dp)
-      .fillMaxWidth()
-      .padding(horizontal = 16.dp)
-  ) {
+  Box(Modifier.height(64.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
     if (leftButton != null) {
       Row(
-        Modifier
-          .height(64.dp)
-          .fillMaxWidth()
-          .background(Color.Transparent),
+        Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Start,
       ) {
         leftButton()
       }
     }
 
     Row(
-      Modifier
-        .height(64.dp)
-        .fillMaxWidth()
-        .background(Color.Transparent),
+      Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.Center
+      horizontalArrangement = Arrangement.Center,
     ) {
       Text(title, fontSize = 24.sp)
     }
 
     Row(
-      Modifier
-        .height(64.dp)
-        .fillMaxWidth()
-        .background(Color.Transparent),
+      Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.End
+      horizontalArrangement = Arrangement.End,
     ) {
       for (button in rightButtons) {
         button()

@@ -14,6 +14,7 @@ androidx-hilt-navigation-compose = "1.3.0"
 ksp = "2.2.21-2.0.4"
 playServicesHome = "17.1.0"
 playServicesHomeTypes = "17.1.0"
+playServicesAuth = "21.6.0"
 webrtc = "1.3.10"
 errorprone-plugin = "4.3.0"
 camerax = "1.5.3"
@@ -36,6 +37,7 @@ androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+androidx-browser = { group = "androidx.browser", name = "browser", version = "1.8.0" }
 matter-android-demo-sdk = { module = "com.google.matter:matter-android-demo-sdk", version.ref = "matter-android-demo-sdk" }
 dagger-hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "androidx-hilt-navigation-compose" }
@@ -43,6 +45,7 @@ hilt-android-compiler = { group = "com.google.dagger", name = "hilt-android-comp
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "androidx-hilt-compiler" }
 play-services-home = { module = "com.google.android.gms:play-services-home", version.ref = "playServicesHome" }
 play-services-home-types = { module = "com.google.android.gms:play-services-home-types", version.ref = "playServicesHomeTypes" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 stream-webrtc-android = { group = "io.getstream", name = "stream-webrtc-android", version.ref = "webrtc" }
 errorprone-annotations = { group = "com.google.errorprone", name = "error_prone_annotations", version.ref = "errorprone-annotations" }
 androidx-camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }

@@ -37,6 +37,7 @@ import com.example.googlehomeapisampleapp.FabricType
 import com.example.googlehomeapisampleapp.HomeApp
 import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFactory
 import com.example.googlehomeapisampleapp.MainActivity
+import com.example.googlehomeapisampleapp.cloudlinking.CurrentStructureRepository
 import com.example.googlehomeapisampleapp.history.HistoryEventUi
 import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
 import com.example.googlehomeapisampleapp.history.HomeBriefCameraEvent
@@ -83,13 +84,16 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
-class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
+class HomeAppViewModel(
+  val homeApp: HomeApp,
+  val currentStructureRepository: CurrentStructureRepository,
+) : ViewModel() {
 
   // Tabs showing main capabilities of the app:
   enum class NavigationTab {
     DEVICES,
     AUTOMATIONS,
-    HISTORY
+    HISTORY,
   }
 
   companion object {
@@ -102,16 +106,33 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   private val _showQrCodeScanner = MutableStateFlow(false)
   val showQrCodeScanner = _showQrCodeScanner.asStateFlow()
 
-  //OTA Screen State Management
+  private val _showCloudLinkingSheet = MutableStateFlow(false)
+  val showCloudLinkingSheet = _showCloudLinkingSheet.asStateFlow()
+
+  fun openCloudLinkingSheet() {
+    _showCloudLinkingSheet.value = true
+  }
+
+  fun closeCloudLinkingSheet() {
+    _showCloudLinkingSheet.value = false
+  }
+
+  // OTA Screen State Management
   /**
-   * State flow for showing the OTA information screen after camera commissioning.
-   * True when OTA screen should be shown, false otherwise.
+   * State flow for showing the OTA information screen after camera commissioning. True when OTA
+   * screen should be shown, false otherwise.
    */
   private val _showOtaScreen = MutableStateFlow(false)
   val showOtaScreen: StateFlow<Boolean> = _showOtaScreen
 
   // Containers tracking the active object being edited:
-  var selectedStructureVM: MutableStateFlow<StructureViewModel?> = MutableStateFlow(null)
+  val selectedStructureVM: StateFlow<StructureViewModel?> =
+    currentStructureRepository.selectedStructureVM
+
+  fun setSelectedStructure(structure: StructureViewModel?) {
+    currentStructureRepository.setSelectedStructure(structure)
+  }
+
   var selectedDeviceVM: MutableStateFlow<DeviceViewModel?> = MutableStateFlow(null)
   var selectedAutomationVM: MutableStateFlow<AutomationViewModel?> = MutableStateFlow(null)
   var selectedDraftVM: MutableStateFlow<DraftViewModel?> = MutableStateFlow(null)
@@ -131,8 +152,7 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
 
   // HomeBriefs state
   /** The latest fetched list of Home Briefs for the selected structure. */
-  private val _homeBriefs =
-    MutableStateFlow<List<HistoryUiDataModel.HomeBriefEvent>>(emptyList())
+  private val _homeBriefs = MutableStateFlow<List<HistoryUiDataModel.HomeBriefEvent>>(emptyList())
   val homeBriefs: StateFlow<List<HistoryUiDataModel.HomeBriefEvent>> = _homeBriefs.asStateFlow()
 
   /** True while a [loadHomeBriefs] fetch is in progress. */
@@ -140,38 +160,42 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   val homeBriefsLoading: StateFlow<Boolean> = _homeBriefsLoading.asStateFlow()
 
   @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
-  val historyFlow: Flow<PagingData<HistoryEventUi>> = combine(
-    selectedStructureVM.filterNotNull().map { it.id }.distinctUntilChanged(),
-    selectedHistoryDeviceVM.map { it?.device?.id?.id }.distinctUntilChanged()
-  ) { structureId, deviceId -> structureId to deviceId }
-    .flatMapLatest { (structureId, deviceId) ->
-      // 1. Get the Structure object from the list of available structures
-      val structure = structureVMs.value.firstOrNull { it.id == structureId }?.structure
-        ?: return@flatMapLatest kotlinx.coroutines.flow.flowOf(PagingData.empty())
+  val historyFlow: Flow<PagingData<HistoryEventUi>> =
+    combine(
+        selectedStructureVM.filterNotNull().map { it.id }.distinctUntilChanged(),
+        selectedHistoryDeviceVM.map { it?.device?.id?.id }.distinctUntilChanged(),
+      ) { structureId, deviceId ->
+        structureId to deviceId
+      }
+      .flatMapLatest { (structureId, deviceId) ->
+        // 1. Get the Structure object from the list of available structures
+        val structure =
+          structureVMs.value.firstOrNull { it.id == structureId }?.structure
+            ?: return@flatMapLatest kotlinx.coroutines.flow.flowOf(PagingData.empty())
 
-      Pager(PagingConfig(pageSize = 20)) {
-        // 2. Obtain historyManager from the specific structure
-        val historyManager = structure.getHistoryManager()
-        val builder = HomeHistoryPagingSource.Builder(historyManager)
+        Pager(PagingConfig(pageSize = 20)) {
+            // 2. Obtain historyManager from the specific structure
+            val historyManager = structure.getHistoryManager()
+            val builder = HomeHistoryPagingSource.Builder(historyManager)
 
-        // 3. Apply the device filter to stop global history fetching
-        deviceId?.let {
-          builder.addHistoryFilters(com.google.home.HistoryFilter.id(it))
-        }
-        builder.build()
-      }.flow.map { pagingData ->
-        pagingData.map { historyItem ->
-          // 4. Map raw SDK HistoryItem to your app's UI model
-          historyItem.toUiDataModel()
-        }
-          .insertSeparators { before, after ->
-            // 5. Add date separators (Today, Yesterday, etc.)
-            shouldAddDateSeparator(before, after)?.let {
-              HistoryEventUi.DateSeparatorModel(it)
-            }
+            // 3. Apply the device filter to stop global history fetching
+            deviceId?.let { builder.addHistoryFilters(com.google.home.HistoryFilter.id(it)) }
+            builder.build()
+          }
+          .flow
+          .map { pagingData ->
+            pagingData
+              .map { historyItem ->
+                // 4. Map raw SDK HistoryItem to your app's UI model
+                historyItem.toUiDataModel()
+              }
+              .insertSeparators { before, after ->
+                // 5. Add date separators (Today, Yesterday, etc.)
+                shouldAddDateSeparator(before, after)?.let { HistoryEventUi.DateSeparatorModel(it) }
+              }
           }
       }
-    }.cachedIn(viewModelScope)
+      .cachedIn(viewModelScope)
 
   private val _navigateToProxyActivity = Channel<Unit>(Channel.CONFLATED)
   val navigateToProxyActivity = _navigateToProxyActivity.receiveAsFlow()
@@ -180,7 +204,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
     viewModelScope.launch {
       try {
         Log.d(TAG, "Initiating Google Sign-In flow...")
-        // CredentialManager is responsible for interacting with various credential providers on the device
+        // CredentialManager is responsible for interacting with various credential providers on the
+        // device
         val credentialManager = CredentialManager.create(context)
         // Your GCP console Web Client ID for Google Sign-In
         val serverClientId = BuildConfig.DEFAULT_WEB_CLIENT_ID
@@ -191,8 +216,7 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
             .setServerClientId(serverClientId) // embed WebClientID in token
             .build()
         // Build the GetCredentialRequest
-        val request =
-          GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
+        val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
 
         // Credential returns when user has selected an account and the getCredential call completes
         val result = credentialManager.getCredential(context = context, request = request)
@@ -201,7 +225,7 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
 
         if (
           credential is CustomCredential &&
-          credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
         ) {
           try {
             val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
@@ -226,24 +250,24 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
             Log.e(TAG, "Could not convert CustomCredential to Google ID Token", e)
             MainActivity.showError(
               this@HomeAppViewModel,
-              "Could not convert CustomCredential to Google ID Token" + e.message
+              "Could not convert CustomCredential to Google ID Token" + e.message,
             )
           }
         } else {
           Log.e(
             TAG,
-            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}"
+            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}",
           )
           MainActivity.showError(
             this@HomeAppViewModel,
-            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}"
+            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}",
           )
         }
       } catch (e: NoCredentialException) {
         Log.e(TAG, "No credentials available", e)
         MainActivity.showError(
           this@HomeAppViewModel,
-          "No accounts found. Please add a Google Account to your device settings."
+          "No accounts found. Please add a Google Account to your device settings.",
         )
       } catch (e: GetCredentialException) {
         Log.e(TAG, "Credential retrieval failed", e)
@@ -255,35 +279,35 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
         Log.e(TAG, "Google Sign-In failed with unexpected error", e)
         MainActivity.showError(
           this@HomeAppViewModel,
-          "Google Sign-In failed with unexpected error" + e.message
+          "Google Sign-In failed with unexpected error" + e.message,
         )
       }
     }
   }
 
-  private val selectedStructureFlow: Flow<Structure> = selectedStructureVM
-    .filterNotNull()
-    .map { it.structure }
-    .shareIn(
-      scope = viewModelScope,
-      started = SharingStarted.Eagerly,
-      replay = 1
-    )
+  private val selectedStructureFlow: Flow<Structure> =
+    selectedStructureVM
+      .filterNotNull()
+      .map { it.structure }
+      .shareIn(scope = viewModelScope, started = SharingStarted.Eagerly, replay = 1)
 
   init {
     Log.i(TAG, "HomeAppViewModel init")
-    val errorsEmitter: MutableSharedFlow<Exception> = MutableSharedFlow(
-      replay = 0,
-      extraBufferCapacity = 0
-    )
+    // Assign active structure ID provider
+    homeApp.permissionsManager.currentStructureIdProvider = {
+      selectedStructureVM.value?.structure?.id?.id
+    }
+    val errorsEmitter: MutableSharedFlow<Exception> =
+      MutableSharedFlow(replay = 0, extraBufferCapacity = 0)
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
     // HubDiscoveryViewModel now consumes the derived selectedStructureFlow
-    hubDiscoveryVM = HubDiscoveryViewModel(
-      structureFlow = selectedStructureFlow,
-      viewModelScope = viewModelScope,
-      errorsEmitter = errorsEmitter,
-      ioDispatcher = ioDispatcher
-    )
+    hubDiscoveryVM =
+      HubDiscoveryViewModel(
+        structureFlow = selectedStructureFlow,
+        viewModelScope = viewModelScope,
+        errorsEmitter = errorsEmitter,
+        ioDispatcher = ioDispatcher,
+      )
 
     viewModelScope.launch {
       var structuresJob: Job? = null
@@ -316,7 +340,7 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
 
       // If a structure isn't selected yet, select the first structure from the list:
       if (selectedStructureVM.value == null && structureVMList.isNotEmpty()) {
-        selectedStructureVM.emit(structureVMList.first())
+        currentStructureRepository.setSelectedStructure(structureVMList.first())
         // Load HomeBriefs once the first structure is available
         loadHomeBriefs()
       }
@@ -324,8 +348,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   }
 
   /**
-   * Reports an error message to the UI layer via the main logger.
-   * This is used when an error occurs outside of the standard flow emission (e.g., in onActivityResult).
+   * Reports an error message to the UI layer via the main logger. This is used when an error occurs
+   * outside of the standard flow emission (e.g., in onActivityResult).
    *
    * @param resultCode The result code of the failed activation.
    */
@@ -334,9 +358,7 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
     MainActivity.showError(this, errorMessage)
   }
 
-  /**
-   * Starts the hub discovery process.
-   */
+  /** Starts the hub discovery process. */
   fun startHubDiscovery() {
     hubDiscoveryVM?.startDiscovery()
   }
@@ -351,8 +373,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
 
   // OTA Screen Functions
   /**
-   * Shows the OTA information screen for a camera device.
-   * Called after a camera device is successfully commissioned.
+   * Shows the OTA information screen for a camera device. Called after a camera device is
+   * successfully commissioned.
    */
   fun showOtaScreen() {
     viewModelScope.launch {
@@ -375,8 +397,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   }
 
   /**
-   * Starts the commissioning flow with the selected fabric type and optional payload.
-   * This function manages the view transitions (scanner -> commissioning client).
+   * Starts the commissioning flow with the selected fabric type and optional payload. This function
+   * manages the view transitions (scanner -> commissioning client).
    */
   fun onCommissionCamera(payload: String? = null) {
 
@@ -386,14 +408,13 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
       return // Stop execution here, wait for the scanner result
     }
 
-    // 2. START API: If payload exists (result from MatterQrCodeScanner), close the UI and call the API.
+    // 2. START API: If payload exists (result from MatterQrCodeScanner), close the UI and call the
+    // API.
     closeQrCodeScanner()
     homeApp.commissioningManager.requestCommissioning(FabricType.GOOGLE_CAMERA, payload)
   }
 
-  /**
-   * Shows automation candidates for the selected structure.
-   */
+  /** Shows automation candidates for the selected structure. */
   @OptIn(HomeExperimentalApi::class)
   fun showCandidates() {
     viewModelScope.launch {
@@ -403,22 +424,19 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
       for (deviceVM in selectedStructureVM.value!!.deviceVMs.value) {
 
         // Check whether the device has a known type:
-        if (deviceVM.type.value is UnknownDeviceType)
-          continue
+        if (deviceVM.type.value is UnknownDeviceType) continue
         // Retrieve a set of initial automation candidates from the device:
         val candidates: Set<NodeCandidate> = deviceVM.device.candidates().first()
 
         for (candidate in candidates) {
           // Check whether the candidate trait is supported:
-          if (candidate.trait !in HomeModule_ProvideSupportedTraitsFactory().get())
-            continue
+          if (candidate.trait !in HomeModule_ProvideSupportedTraitsFactory().get()) continue
           // Check whether the candidate type is supported:
           when (candidate) {
             // Command candidate type:
             is CommandCandidate -> {
               // Check whether the command candidate has a supported command:
-              if (candidate.commandDescriptor !in ActionViewModel.commandMap)
-                continue
+              if (candidate.commandDescriptor !in ActionViewModel.commandMap) continue
             }
             // Other candidate types are currently unsupported:
             else -> {
@@ -487,8 +505,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   /**
    * Creates and shows a predefined draft for an On/Off light automation.
    *
-   * This draft requires at least two OnOff-capable lights in the selected structure.
-   * If fewer than two are available, an error message is shown instead.
+   * This draft requires at least two OnOff-capable lights in the selected structure. If fewer than
+   * two are available, an error message is shown instead.
    */
   fun showPredefinedOnOffDraft() {
     viewModelScope.launch {
@@ -509,8 +527,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   /**
    * Creates and shows a predefined draft for the "Speaker and Fan" automation.
    *
-   * This draft requires a speaker, fan, and plug in the selected structure.
-   * If any required device is missing, an error message is shown instead.
+   * This draft requires a speaker, fan, and plug in the selected structure. If any required device
+   * is missing, an error message is shown instead.
    */
   fun showPredefinedSpeakerAndFanDraft() {
     viewModelScope.launch {
@@ -518,15 +536,16 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
       val repository = AutomationsRepository()
 
       // Pass the structure from selectedStructureVM
-      val draftVM = repository.createSpeakerAndFanAutomationDraft(
-        structureVM.deviceVMs.value,
-        structureVM.structure
-      )
+      val draftVM =
+        repository.createSpeakerAndFanAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
 
       if (draftVM == null) {
         MainActivity.showError(
           this,
-          "This automation requires:\n• 1 Speaker\n• 1 Fan\n• 1 Smart Outlet\n\nPlease add these devices and try again."
+          "This automation requires:\n• 1 Speaker\n• 1 Fan\n• 1 Smart Outlet\n\nPlease add these devices and try again.",
         )
         return@launch
       }
@@ -536,8 +555,8 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   }
 
   /**
-   * Shows the predefined light and thermostat automation draft
-   * This creates a draft that turns on lights and sets thermostat to auto when door is unlocked
+   * Shows the predefined light and thermostat automation draft This creates a draft that turns on
+   * lights and sets thermostat to auto when door is unlocked
    */
   suspend fun showPredefinedLightAndThermostatDraft() {
     val structureVM = selectedStructureVM.value ?: return
@@ -552,23 +571,24 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   /**
    * Creates and shows a predefined draft for the Window Covering automation.
    *
-   * This draft requires a temperature sensor (or thermostat) and a window covering device.
-   * The automation closes the window covering when temperature drops below 15°C and it's dark outside.
+   * This draft requires a temperature sensor (or thermostat) and a window covering device. The
+   * automation closes the window covering when temperature drops below 15°C and it's dark outside.
    */
   fun showPredefinedWindowCoveringDraft() {
     viewModelScope.launch {
       val structureVM = selectedStructureVM.value ?: return@launch
       val repository = AutomationsRepository()
 
-      val draftVM = repository.createWindowCoveringAutomationDraft(
-        structureVM.deviceVMs.value,
-        structureVM.structure
-      )
+      val draftVM =
+        repository.createWindowCoveringAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
 
       if (draftVM == null) {
         MainActivity.showError(
           this,
-          "This automation requires:\n• 1 Temperature Sensor (or Thermostat)\n• 1 Window Covering\n\nPlease add these devices and try again."
+          "This automation requires:\n• 1 Temperature Sensor (or Thermostat)\n• 1 Window Covering\n\nPlease add these devices and try again.",
         )
         return@launch
       }
@@ -576,20 +596,50 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
       selectedDraftVM.emit(draftVM)
     }
   }
+
   fun showPredefinedLightAndTVPeriodicDraft() {
     viewModelScope.launch {
       val structureVM = selectedStructureVM.value ?: return@launch
       val repository = AutomationsRepository()
 
-      val draftVM = repository.createLightAndTVPeriodicAutomationDraft(
-        structureVM.deviceVMs.value,
-        structureVM.structure
-      )
+      val draftVM =
+        repository.createLightAndTVPeriodicAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
 
       if (draftVM == null) {
         MainActivity.showError(
           this,
-          "This automation requires:\n• At least 1 Light\n• 1 Occupancy Sensor\n• 1 Google TV\n\nPlease add these devices and try again."
+          "This automation requires:\n• At least 1 Light\n• 1 Occupancy Sensor\n• 1 Google TV\n\nPlease add these devices and try again.",
+        )
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+  /**
+   * Creates and shows a predefined draft for the "Camera Scene Detected" Natural
+   * Language camera starter automation. Uses a generic, location-independent query
+   * ("a person is detected") so it's reliably testable on any camera.
+   *
+   * This draft requires a camera and an OnOff-capable light in the selected structure.
+   * If either required device is missing, an error message is shown instead.
+   */
+  fun showPredefinedCameraSceneDetectedLightDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      val draftVM = repository.createCameraSceneDetectedLightAutomationDraft(
+        structureVM.deviceVMs.value
+      )
+
+      if (draftVM == null) {
+        MainActivity.showError(
+          this@HomeAppViewModel,
+          "This automation requires:\n• 1 Camera\n• 1 OnOff-capable Light\n\nPlease add these devices and try again."
         )
         return@launch
       }
@@ -617,39 +667,43 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
   }
 
   /**
-   * Opens the video player for a HomeBrief camera event clip.
-   * Maps [HomeBriefCameraEvent] to [HistoryUiDataModel.CameraEvent] and reuses
-   * the existing [_selectedVideoEvent] state so the View only manages one player.
+   * Opens the video player for a HomeBrief camera event clip. Maps [HomeBriefCameraEvent] to
+   * [HistoryUiDataModel.CameraEvent] and reuses the existing [_selectedVideoEvent] state so the
+   * View only manages one player.
    */
   fun openHomeBriefVideo(event: HomeBriefCameraEvent) {
-    _selectedVideoEvent.value = HistoryUiDataModel.CameraEvent(
-      eventId = event.sessionId,
-      timestamp = event.startTime ?: java.time.Instant.EPOCH,
-      entityName = "Camera Clip",
-      eventType = com.example.googlehomeapisampleapp.history.HistoryUiEventType.Unknown,
-      mediaUrl = com.example.googlehomeapisampleapp.history.MediaUrl(
-        previewUrl = event.previewUrl,
-        mp4DownloadUrl = event.previewUrl,
-      ),
-      deviceId = event.entityObjectId.id,
-    )
+    _selectedVideoEvent.value =
+      HistoryUiDataModel.CameraEvent(
+        eventId = event.sessionId,
+        timestamp = event.startTime ?: java.time.Instant.EPOCH,
+        entityName = "Camera Clip",
+        eventType = com.example.googlehomeapisampleapp.history.HistoryUiEventType.Unknown,
+        mediaUrl =
+          com.example.googlehomeapisampleapp.history.MediaUrl(
+            previewUrl = event.previewUrl,
+            mp4DownloadUrl = event.previewUrl,
+          ),
+        deviceId = event.entityObjectId.id,
+      )
   }
 
   /**
-   * Fetches the latest page of Home Briefs for the currently selected structure
-   * and exposes them via [homeBriefs]. Briefs are displayed pinned at the top of
-   * the activity feed, above camera history items.
+   * Fetches the latest page of Home Briefs for the currently selected structure and exposes them
+   * via [homeBriefs]. Briefs are displayed pinned at the top of the activity feed, above camera
+   * history items.
    *
-   * Non-fatal on error: the history feed still shows camera events if briefs are
-   * unavailable (e.g. feature not enabled for this account, trait offline).
-   * Guarded by [_homeBriefsLoading] to prevent concurrent fetches.
+   * Non-fatal on error: the history feed still shows camera events if briefs are unavailable (e.g.
+   * feature not enabled for this account, trait offline). Guarded by [_homeBriefsLoading] to
+   * prevent concurrent fetches.
    */
   @OptIn(HomeExperimentalApi::class)
   fun loadHomeBriefs() {
-    val structure = selectedStructureVM.value?.structure ?: run {
-      Log.w(TAG, "loadHomeBriefs: no structure selected, skipping")
-      return
-    }
+    val structure =
+      selectedStructureVM.value?.structure
+        ?: run {
+          Log.w(TAG, "loadHomeBriefs: no structure selected, skipping")
+          return
+        }
     if (_homeBriefsLoading.value) {
       Log.d(TAG, "loadHomeBriefs: already loading, skipping")
       return
@@ -680,7 +734,10 @@ class HomeAppViewModel(val homeApp: HomeApp) : ViewModel() {
     }
   }
 
-  private fun shouldAddDateSeparator(before: HistoryUiDataModel?, after: HistoryUiDataModel?): java.time.LocalDate? {
+  private fun shouldAddDateSeparator(
+    before: HistoryUiDataModel?,
+    after: HistoryUiDataModel?,
+  ): java.time.LocalDate? {
     if (after == null) return null
     val zone = java.time.ZoneId.systemDefault()
     val afterDate = after.timestamp.atZone(zone).toLocalDate()

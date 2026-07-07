@@ -17,47 +17,51 @@ android {
     applicationId = "com.example.googlehomeapisampleapp"
     minSdk = 29
     targetSdk = 36
-    versionCode = 42
-    versionName = "1.9.0"
+    versionCode = 43
+    versionName = "1.9.1"
 
-    // Store your GCP project web client ID in local.properties and access it via project properties.
+    // Store your GCP project web client ID and Playground OAuth Client ID in local.properties and access them
+    // via project properties.
     // If local.properties doesn't exist in your app root folder, just create it
-    // e.g. add this line to your local.properties
+    // e.g. add these lines to your local.properties
     // WEB_CLIENT_ID_DEV={ProjectNumber}....apps.googleusercontent.com
+    // PLAYGROUND_OAUTH_CLIENT_ID=your-oauth-client-id
     val localProperties = Properties()
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
       localPropertiesFile.inputStream().use { localProperties.load(it) }
     }
-    val webClientIdDevRaw = localProperties.getProperty("WEB_CLIENT_ID_DEV")
-      ?: project.findProperty("WEB_CLIENT_ID_DEV") as? String
-      ?: "YOUR_DEFAULT_WEB_CLIENT_ID"
+    val webClientIdDevRaw =
+      localProperties.getProperty("WEB_CLIENT_ID_DEV")
+        ?: project.findProperty("WEB_CLIENT_ID_DEV") as? String
+        ?: "YOUR_DEFAULT_WEB_CLIENT_ID"
     val webClientIdDev = webClientIdDevRaw.replace("\"", "")
     buildConfigField("String", "DEFAULT_WEB_CLIENT_ID", "\"$webClientIdDev\"")
-  }
-  lint {
-    disable += "NullSafeMutableLiveData"
-  }
 
+    // Note: PLAYGROUND_OAUTH_CLIENT_ID is only required for the Google Home Playground simulation
+    // to retrieve the auth code via a web redirect (Custom Tabs).
+    // In a production partner app, you would likely retrieve this code silently from your own
+    // backend, which would not require this Client ID to be stored in the mobile app.
+    val playgroundOauthClientIdRaw =
+      localProperties.getProperty("PLAYGROUND_OAUTH_CLIENT_ID")
+        ?: project.findProperty("PLAYGROUND_OAUTH_CLIENT_ID") as? String
+        ?: "abc" // Default client ID for GHP Playground environment
+    val playgroundOauthClientId = playgroundOauthClientIdRaw.replace("\"", "")
+    buildConfigField("String", "PLAYGROUND_OAUTH_CLIENT_ID", "\"$playgroundOauthClientId\"")
+  }
+  lint { disable += "NullSafeMutableLiveData" }
 
   buildTypes {
     release {
       isMinifyEnabled = false
-      proguardFiles(
-        getDefaultProguardFile("proguard-android-optimize.txt"),
-        "proguard-rules.pro"
-      )
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
-  kotlin {
-    compilerOptions {
-      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
-  }
+  kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
   buildFeatures {
     compose = true
     buildConfig = true
@@ -76,9 +80,11 @@ dependencies {
   implementation(libs.androidx.material3)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.browser)
   // Home API SDK dependency:
   implementation(libs.play.services.home)
   implementation(libs.play.services.home.types)
+  implementation(libs.play.services.auth)
   // Matter Android Demo SDK
   implementation(libs.matter.android.demo.sdk)
 

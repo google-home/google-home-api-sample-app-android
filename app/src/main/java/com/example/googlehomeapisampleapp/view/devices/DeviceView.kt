@@ -29,16 +29,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -66,14 +66,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import com.example.googlehomeapisampleapp.R
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -97,6 +103,7 @@ import com.example.googlehomeapisampleapp.extension.thermostat.isValidHeatingSet
 import com.example.googlehomeapisampleapp.extension.thermostat.setOccupiedCoolingPoint
 import com.example.googlehomeapisampleapp.extension.thermostat.setOccupiedHeatingPoint
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
+import com.example.googlehomeapisampleapp.viewmodel.devices.BasicInformationUiState
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.google.home.ConnectivityState
 import com.google.home.DeviceType
@@ -120,9 +127,9 @@ import com.google.home.matter.standard.TemperatureMeasurement
 import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatTrait
 import com.google.home.matter.standard.WindowCovering
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @Composable
 fun DeviceView(homeAppVM: HomeAppViewModel) {
@@ -135,13 +142,18 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
 
   deviceVM?.let { vm ->
     val context = LocalContext.current
-    val deviceType = vm.type.collectAsState().value
+    val deviceType by vm.type.collectAsStateWithLifecycle()
     val isCameraDevice = deviceType.factory == GoogleCameraDevice
     val isDoorbellDevice = deviceType.factory == GoogleDoorbellDevice
 
-    val name by vm.name.collectAsState()
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
+    val name by vm.name.collectAsStateWithLifecycle()
+    val deviceTypeName by vm.typeName.collectAsStateWithLifecycle()
+    var showRenameDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    var showMenu by rememberSaveable { mutableStateOf(false) }
+    var showMetaDialog by rememberSaveable { mutableStateOf(false) }
+
+    val basicInfoUiState by vm.basicInfoUiState.collectAsStateWithLifecycle(initialValue = BasicInformationUiState.Loading)
 
     LaunchedEffect(vm) {
       vm.uiEventFlow.collect { event ->
@@ -178,16 +190,43 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
           }
         }
 
-        IconButton(onClick = { homeAppVM.homeApp.commissioningManager.requestShareDevice(vm.id) }) {
-          Icon(Icons.Default.Share, "Share", tint = MaterialTheme.colorScheme.primary)
-        }
-
-        IconButton(onClick = { showRenameDialog = true }) {
-          Icon(Icons.Default.Edit, "Rename", tint = MaterialTheme.colorScheme.primary)
-        }
-
-        IconButton(onClick = { showDeleteDialog = true }) {
-          Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.primary)
+        Box {
+          IconButton(onClick = { showMenu = true }) {
+            Icon(Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.primary)
+          }
+          DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+          ) {
+            DropdownMenuItem(
+              text = { Text("Device Information") },
+              onClick = {
+                showMetaDialog = true
+                showMenu = false
+              }
+            )
+            DropdownMenuItem(
+              text = { Text("Share Device") },
+              onClick = {
+                homeAppVM.homeApp.commissioningManager.requestShareDevice(vm.id)
+                showMenu = false
+              }
+            )
+            DropdownMenuItem(
+              text = { Text("Rename Device") },
+              onClick = {
+                showRenameDialog = true
+                showMenu = false
+              }
+            )
+            DropdownMenuItem(
+              text = { Text("Delete Device") },
+              onClick = {
+                showDeleteDialog = true
+                showMenu = false
+              }
+            )
+          }
         }
       }
 
@@ -237,9 +276,6 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             val isChimeToggleSupported by cameraVm.isChimeToggleSupported.collectAsStateWithLifecycle()
             val chimeType by cameraVm.externalChimeType.collectAsStateWithLifecycle()
 
-            //Device info
-            val deviceInfo by cameraVm.deviceInfo.collectAsStateWithLifecycle()
-
             val cameraTimelineUiState by cameraVm.cameraTimelineUiState.collectAsStateWithLifecycle()
 
             // Recording Mode
@@ -267,9 +303,6 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
               // Cloud Audio Mapping (Using the renamed hardware-synced variables)
               isAudioRecording = isAudioRecording,
               isToggleAudioRecordingInProgress = isToggleAudioRecordingInProgress,
-
-              // Device info
-              deviceInfo = deviceInfo,
 
               // Doorbell
               isDoorbell = isDoorbell,
@@ -330,6 +363,75 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
         dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } }
       )
     }
+
+    if (showMetaDialog) {
+      Dialog(
+        onDismissRequest = { showMetaDialog = false },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+      ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+          Column(modifier = Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(16.dp))
+            // App Bar / Navigation Header
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              IconButton(onClick = { showMetaDialog = false }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Navigate back")
+              }
+              Text(
+                text = "Device Information",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(start = 12.dp),
+                fontWeight = FontWeight.Bold,
+              )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            // Metadata entries
+            Column(
+              modifier =
+                Modifier
+                  .fillMaxSize()
+                  .verticalScroll(rememberScrollState())
+                  .padding(horizontal = 24.dp, vertical = 20.dp),
+              verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+              MetaRow(label = "Device ID", value = vm.id)
+              MetaRow(label = "Device Name", value = name)
+              MetaRow(label = "Device Type", value = deviceTypeName)
+              HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+              val infoState = basicInfoUiState
+              val notAvailable = stringResource(R.string.not_available_text)
+              val loadingText = stringResource(R.string.loading_text)
+              val errorText = stringResource(R.string.error_text)
+
+              fun getDisplayValue(selector: (BasicInformationUiState.Success) -> String?): String {
+                return when (infoState) {
+                  is BasicInformationUiState.Success -> selector(infoState) ?: notAvailable
+                  BasicInformationUiState.Error -> errorText
+                  BasicInformationUiState.Loading, null -> loadingText
+                }
+              }
+
+              MetaRow(label = "Serial Number", value = getDisplayValue { it.serialNumber })
+              MetaRow(label = "Vendor Name", value = getDisplayValue { it.vendorName })
+              MetaRow(label = "Product Name", value = getDisplayValue { it.productName })
+              MetaRow(label = "Matter Vendor ID", value = getDisplayValue { it.vendorId })
+              MetaRow(label = "Matter Product ID", value = getDisplayValue { it.productId })
+              MetaRow(label = "Hardware Version", value = getDisplayValue { it.hardwareVersion })
+              MetaRow(label = "Software Version", value = getDisplayValue { it.softwareVersion })
+              MetaRow(label = "Node Label", value = getDisplayValue { it.nodeLabel })
+              MetaRow(label = "Location", value = getDisplayValue { it.location })
+              MetaRow(label = "Manufacturing Date", value = getDisplayValue { it.manufacturingDate })
+              MetaRow(label = "Part Number", value = getDisplayValue { it.partNumber })
+              MetaRow(label = "Product URL", value = getDisplayValue { it.productUrl })
+              MetaRow(label = "Product Label", value = getDisplayValue { it.productLabel })
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -337,8 +439,8 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
 fun ControlListComponent(homeAppVM: HomeAppViewModel) {
 
   val deviceVM: DeviceViewModel = homeAppVM.selectedDeviceVM.collectAsState().value ?: return
-  val deviceType: DeviceType = deviceVM.type.collectAsState().value
-  val deviceTypeName: String = deviceVM.typeName.collectAsState().value
+  val deviceType: DeviceType by deviceVM.type.collectAsStateWithLifecycle()
+  val deviceTypeName: String by deviceVM.typeName.collectAsStateWithLifecycle()
   val deviceTraits: List<Trait> = deviceVM.traits.collectAsState().value
 
   Column(
@@ -1434,5 +1536,30 @@ private fun LabeledSlider(
       },
       isEnabled = isEnabled
     )
+  }
+}
+
+@Composable
+private fun MetaRow(label: String, value: String) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Text(
+      text = label,
+      fontWeight = FontWeight.SemiBold,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      fontSize = 14.sp,
+      modifier = Modifier.padding(end = 16.dp)
+    )
+    SelectionContainer(modifier = Modifier.weight(1f, fill = false)) {
+      Text(
+        text = value,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 14.sp,
+        textAlign = TextAlign.End,
+      )
+    }
   }
 }

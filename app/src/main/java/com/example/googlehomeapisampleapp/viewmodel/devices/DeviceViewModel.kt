@@ -15,6 +15,7 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.viewmodel.devices
 
+
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -27,6 +28,7 @@ import com.google.home.HomeDevice
 import com.google.home.Trait
 import com.google.home.TraitFactory
 import com.google.home.automation.UnknownDeviceType
+import com.example.googlehomeapisampleapp.extension.basicinformation.observeBasicInformationUiState
 import com.google.home.google.Assistant
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDisplayDevice
@@ -66,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -87,6 +90,7 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
   val traits: MutableStateFlow<List<Trait>>
   val typeName: MutableStateFlow<String>
   val status: MutableStateFlow<String>
+  val basicInfoUiState: Flow<BasicInformationUiState> = device.observeBasicInformationUiState()
   private val _uiEventFlow = MutableSharedFlow<UiEvent>()
   val uiEventFlow: SharedFlow<UiEvent> = _uiEventFlow
 

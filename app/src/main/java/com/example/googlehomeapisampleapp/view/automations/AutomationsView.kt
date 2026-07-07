@@ -75,20 +75,19 @@ fun AutomationsAccountButton(homeAppVM: HomeAppViewModel) {
    * - Account Icon Button: triggers a permission request using PermissionsManager.
    * - Overflow Menu: opens a dropdown with a "Revoke Permissions" option.
    *
-   * Selecting "Revoke Permissions" launches an intent to Google’s account management
-   * page for manually revoking app access.
-   *
+   * Selecting "Revoke Permissions" launches an intent to Google’s account management page for
+   * manually revoking app access.
    */
   Row {
     IconButton(
-      onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions(true) },
-      modifier = Modifier.size(48.dp).background(Color.Transparent)
+      onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions(isForceRefresh = true) },
+      modifier = Modifier.size(48.dp).background(Color.Transparent),
     ) {
       Icon(
         imageVector = Icons.Default.AccountCircle,
         contentDescription = "",
         modifier = Modifier.fillMaxSize(),
-        tint = MaterialTheme.colorScheme.primary
+        tint = MaterialTheme.colorScheme.primary,
       )
     }
 
@@ -96,24 +95,29 @@ fun AutomationsAccountButton(homeAppVM: HomeAppViewModel) {
       Icon(Icons.Default.MoreVert, contentDescription = "Menu")
     }
 
-    DropdownMenu(
-      expanded = expanded,
-      onDismissRequest = { expanded = false }
-    ) {
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
       DropdownMenuItem(
         text = { Text("Revoke Permissions") },
         onClick = {
           expanded = false
-          val intent = Intent(
-            Intent.ACTION_VIEW,
-            "https://myaccount.google.com/u/2/connections?utm_source=3p".toUri()
-          )
+          val intent =
+            Intent(
+              Intent.ACTION_VIEW,
+              "https://myaccount.google.com/u/2/connections?utm_source=3p".toUri(),
+            )
           homeAppVM.homeApp.context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+        },
       )
       DropdownMenuItem(
         text = { Text("Google Sign-In") },
         onClick = { homeAppVM.signInWithGoogleAccount(context) },
+      )
+      DropdownMenuItem(
+        text = { Text("Link GHP Playground") },
+        onClick = {
+          expanded = false
+          homeAppVM.openCloudLinkingSheet()
+        },
       )
     }
   }
@@ -134,10 +138,8 @@ fun AutomationsView(homeAppVM: HomeAppViewModel) {
     AutomationsTopBar("", listOf { AutomationsAccountButton(homeAppVM) })
 
     Box(modifier = Modifier.weight(1f)) {
-
       Column {
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-
           if (structureVMs.size > 1) {
             TextButton(onClick = { expanded = true }) {
               Text(text = "$structureName ▾", fontSize = 32.sp)
@@ -156,9 +158,9 @@ fun AutomationsView(homeAppVM: HomeAppViewModel) {
                 DropdownMenuItem(
                   text = { Text(structure.name) },
                   onClick = {
-                    scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
+                    homeAppVM.setSelectedStructure(structure)
                     expanded = false
-                  }
+                  },
                 )
               }
             }
@@ -166,15 +168,19 @@ fun AutomationsView(homeAppVM: HomeAppViewModel) {
         }
 
         Column(
-          modifier = Modifier.verticalScroll(rememberScrollState())
-            .weight(weight = 1f, fill = false)
+          modifier =
+            Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)
         ) {
           AutomationListComponent(homeAppVM)
         }
       }
 
-      Button(onClick = { homeAppVM.showCandidates() },
-             modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) { Text("+ Create") }
+      Button(
+        onClick = { homeAppVM.showCandidates() },
+        modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd),
+      ) {
+        Text("+ Create")
+      }
     }
 
     TabbedMenuView(homeAppVM)
@@ -189,12 +195,14 @@ fun AutomationListItem(automationVM: AutomationViewModel, homeAppVM: HomeAppView
   val automationStarters: List<Starter> = automationVM.starters.collectAsState().value
   val automationActions: List<Action> = automationVM.actions.collectAsState().value
 
-  val status: String = "" + automationStarters.size + " starters" +
-    " ● " + automationActions.size + " actions"
+  val status: String =
+    "" + automationStarters.size + " starters" + " ● " + automationActions.size + " actions"
 
   Column(
-    Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth()
-      .clickable { scope.launch { homeAppVM.selectedAutomationVM.emit(automationVM) } }) {
+    Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clickable {
+      scope.launch { homeAppVM.selectedAutomationVM.emit(automationVM) }
+    }
+  ) {
     Text(automationName, fontSize = 20.sp)
     Text(status, fontSize = 16.sp)
   }
@@ -213,7 +221,7 @@ fun AutomationListComponent(homeAppVM: HomeAppViewModel) {
     Text(
       stringResource(R.string.automations_title),
       fontSize = 16.sp,
-      fontWeight = FontWeight.SemiBold
+      fontWeight = FontWeight.SemiBold,
     )
   }
 
@@ -228,7 +236,7 @@ fun AutomationsTopBar(title: String, buttons: List<@Composable () -> Unit>) {
     Row(
       Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.Center
+      horizontalArrangement = Arrangement.Center,
     ) {
       Text(title, fontSize = 24.sp)
     }
@@ -236,7 +244,7 @@ fun AutomationsTopBar(title: String, buttons: List<@Composable () -> Unit>) {
     Row(
       Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.End
+      horizontalArrangement = Arrangement.End,
     ) {
       for (button in buttons) {
         button()

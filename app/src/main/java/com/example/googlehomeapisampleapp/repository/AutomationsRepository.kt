@@ -25,6 +25,7 @@ import com.google.home.automation.between
 import com.google.home.automation.equals
 import com.google.home.automation.lessThan
 import com.google.home.automation.notEquals
+import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleTVDevice
 import com.google.home.google.SimplifiedThermostat
 import com.google.home.google.SimplifiedThermostatTrait
@@ -32,6 +33,7 @@ import com.google.home.google.Time
 import com.google.home.google.Time.Companion.currentTime
 import com.google.home.google.Time.Companion.sunriseTime
 import com.google.home.google.Time.Companion.sunsetTime
+import com.google.home.google.VideoAnalysis
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.DimmableLightDevice
 import com.google.home.matter.standard.DoorLock
@@ -65,6 +67,7 @@ data class DeviceCapabilities(
   val hasRequiredDevicesForSleep: Boolean = false,
   val hasWindowCoveringDevices: Boolean = false,
   val hasRequiredDevicesForLightAndTVPeriodic: Boolean = false,
+  val hasCameraAndLight: Boolean = false,
 )
 
 /**
@@ -86,6 +89,7 @@ fun computeDeviceCapabilities(deviceVMs: List<DeviceViewModel>): DeviceCapabilit
   var hasWindowCovering = false
   var hasOccupancySensor = false
   var hasGoogleTV = false
+  var hasCamera = false
 
   for (vm in deviceVMs) {
     when (vm.type.value.factory) {
@@ -103,6 +107,7 @@ fun computeDeviceCapabilities(deviceVMs: List<DeviceViewModel>): DeviceCapabilit
       WindowCoveringDevice -> hasWindowCovering = true
       OccupancySensorDevice -> hasOccupancySensor = true
       GoogleTVDevice -> hasGoogleTV = true
+      GoogleCameraDevice -> hasCamera = true
     }
   }
 
@@ -112,6 +117,7 @@ fun computeDeviceCapabilities(deviceVMs: List<DeviceViewModel>): DeviceCapabilit
     hasRequiredDevicesForSleep = hasSpeaker && hasFan && hasPlug,
     hasWindowCoveringDevices = hasTemperatureSensor && hasWindowCovering,
     hasRequiredDevicesForLightAndTVPeriodic = lightCount >= 1 && hasGoogleTV && hasOccupancySensor,
+    hasCameraAndLight = hasCamera && lightCount >= 1,
   )
 }
 
@@ -278,6 +284,30 @@ class AutomationsRepository {
       automationType = DraftViewModel.AutomationType.LIGHT_AND_THERMOSTAT
     )
   }
+  /**
+   * Creates a draft automation that turns on a light when the camera detects a person,
+   * using a Natural Language camera starter.
+   *
+   * Note: [VideoAnalysis.QueryMatchedEvent.query] supports custom natural language strings.
+   */
+  fun createCameraSceneDetectedLightAutomationDraft(
+    deviceVMs: List<DeviceViewModel>
+  ): DraftViewModel? {
+    val camera = deviceVMs.firstOrNull { it.type.value.factory == GoogleCameraDevice }
+      ?: return null
+    val light = getOnOffCapableLights(deviceVMs).firstOrNull()
+      ?: return null
+
+    val presetDraft = createCameraSceneDetectedLightDraftAutomation(camera, light)
+
+    return DraftViewModel(
+      candidateVM = null,
+      presetDraft = presetDraft,
+      isLocked = true,
+      automationType = DraftViewModel.AutomationType.CUSTOM
+    )
+  }
+
   private fun createOnOffDraftAutomation(
     deviceA: DeviceViewModel,
     deviceB: DeviceViewModel,
@@ -468,6 +498,43 @@ class AutomationsRepository {
           action(thermostat.device, thermostat.type.value.factory) {
             command(SimplifiedThermostat.setSystemMode(SimplifiedThermostatTrait.SystemModeEnum.Auto))
           }
+        }
+      }
+    }
+  }
+
+  /**
+   * Creates a draft automation that turns on a light when the camera detects a person,
+   * using a natural language query. Kept generic and location-independent (no
+   * "in yard"/"on counter" specifics) so it's reliably testable on any camera regardless
+   * of where it's physically installed. No Familiar Face usage (see b/500710336 scope).
+   */
+  private fun createCameraSceneDetectedLightDraftAutomation(
+    camera: DeviceViewModel,
+    light: DeviceViewModel,
+  ): DraftAutomation {
+    return automation {
+      name = "Camera Natural Language Scene Alert"
+      description = "Turns on the light when a person is detected by the camera."
+      isActive = true
+
+      sequential {
+        select {
+          // You can customize this query string using natural language
+          // (e.g., "the dog is on the couch", "person detected in yard") -
+          // kept generic here so the predefined template is testable on any camera.
+          starter(
+            camera.device,
+            camera.type.value.factory,
+            VideoAnalysis.QueryMatchedEvent
+          ) {
+            parameter(VideoAnalysis.QueryMatchedEvent.query("a person is detected"))
+          }
+          manualStarter()
+        }
+
+        action(light.device, light.type.value.factory) {
+          command(OnOff.on())
         }
       }
     }

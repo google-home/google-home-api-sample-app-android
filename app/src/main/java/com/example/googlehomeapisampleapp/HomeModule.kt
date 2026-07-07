@@ -32,6 +32,7 @@ import com.google.home.google.CameraHistory
 import com.google.home.google.Chime
 import com.google.home.google.ChimeThemes
 import com.google.home.google.ExtendedApplicationLauncher
+import com.google.home.google.ExtendedBasicInformation
 import com.google.home.google.ExtendedLevelControl
 import com.google.home.google.ExtendedMediaInput
 import com.google.home.google.ExtendedMediaPlayback
@@ -45,6 +46,7 @@ import com.google.home.google.PushAvStreamTransport
 import com.google.home.google.RecordingMode
 import com.google.home.google.SearchableHome
 import com.google.home.google.Time
+import com.google.home.google.VideoAnalysis
 import com.google.home.google.VoiceStarter
 import com.google.home.google.Volume
 import com.google.home.google.WebRtcLiveView
@@ -94,35 +96,35 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object HomeModule {
 
-  /**
-   * Provides a list of supported device types.
-   */
-  @Provides
-  @Singleton
-  fun provideSupportedDeviceTypes(): @JvmSuppressWildcards List<DeviceTypeFactory<out DeviceType>> =
-    listOf(
-      ColorTemperatureLightDevice,
-      ContactSensorDevice,
-      DimmableLightDevice,
-      DoorLockDevice,
-      ExtendedColorLightDevice,
-      FanDevice,
-      GenericSwitchDevice,
-      GoogleCameraDevice,
-      GoogleDisplayDevice,
-      GoogleDoorbellDevice,
-      GoogleTVDevice,
-      OccupancySensorDevice,
-      OnOffLightDevice,
-      OnOffLightSwitchDevice,
-      OnOffPluginUnitDevice,
-      OnOffSensorDevice,
-      RootNodeDevice,
-      SpeakerDevice,
-      TemperatureSensorDevice,
-      ThermostatDevice,
-      WindowCoveringDevice,
-    )
+/**
+ * Provides a list of supported device types.
+ */
+@Provides
+@Singleton
+fun provideSupportedDeviceTypes(): @JvmSuppressWildcards List<DeviceTypeFactory<out DeviceType>> =
+listOf(
+    ColorTemperatureLightDevice,
+    ContactSensorDevice,
+    DimmableLightDevice,
+    DoorLockDevice,
+    ExtendedColorLightDevice,
+    FanDevice,
+    GenericSwitchDevice,
+    GoogleCameraDevice,
+    GoogleDisplayDevice,
+    GoogleDoorbellDevice,
+    GoogleTVDevice,
+    OccupancySensorDevice,
+    OnOffLightDevice,
+    OnOffLightSwitchDevice,
+    OnOffPluginUnitDevice,
+    OnOffSensorDevice,
+    RootNodeDevice,
+    SpeakerDevice,
+    TemperatureSensorDevice,
+    ThermostatDevice,
+    WindowCoveringDevice,
+)
 
   /**
    * Provides a list of supported device traits.
@@ -144,6 +146,7 @@ object HomeModule {
       ChimeThemes,
       DoorLock,
       ExtendedApplicationLauncher,
+      ExtendedBasicInformation,
       ExtendedLevelControl,
       ExtendedMediaInput,
       ExtendedMediaPlayback,
@@ -162,8 +165,9 @@ object HomeModule {
       TemperatureMeasurement,
       Thermostat,
       Time,
-      Volume,
+      VideoAnalysis,
       VoiceStarter,
+      Volume,
       WebRtcLiveView,
       WindowCovering,
       ZoneManagement,

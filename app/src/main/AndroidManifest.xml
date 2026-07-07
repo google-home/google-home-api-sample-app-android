@@ -20,7 +20,8 @@
   android:name=".MainActivity"
   android:exported="true"
   android:theme="@style/Theme.GoogleHomeAPISampleApp"
-  android:windowSoftInputMode="adjustResize">
+  android:windowSoftInputMode="adjustResize"
+  android:launchMode="singleTop">
 
     <intent-filter>
       <action android:name="android.intent.action.MAIN" />
@@ -29,6 +30,19 @@
     <intent-filter>
       <action android:name="com.google.android.gms.home.matter.ACTION_START_COMMISSIONING" />
       <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="googlehomeapisampleapp" android:host="oauth-callback" />
+    </intent-filter>
+    <!-- TODO: Revert/remove this staging redirect intent filter in the future. -->
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="https" android:host="oauth-redirect.googleusercontent.com" android:pathPrefix="/r/smarthome-playground-staging" />
     </intent-filter>
     </activity>
 

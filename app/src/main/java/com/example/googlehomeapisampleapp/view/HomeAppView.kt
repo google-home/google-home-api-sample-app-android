@@ -60,15 +60,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.googlehomeapisampleapp.AccountSwitchProxyActivity
 import com.example.googlehomeapisampleapp.MainActivity
+import com.example.googlehomeapisampleapp.cloudlinking.CloudLinkingBottomSheet
+import com.example.googlehomeapisampleapp.cloudlinking.CloudLinkingViewModel
 import com.example.googlehomeapisampleapp.commissioning.OtaUpdateScreen
 import com.example.googlehomeapisampleapp.commissioning.qrcodescanner.MatterQrCodeScanner
-import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
-import com.example.googlehomeapisampleapp.history.HistoryUiEventType
-import com.example.googlehomeapisampleapp.history.HistoryView
 import com.example.googlehomeapisampleapp.history.HistoryVideoPlayerScreen
-import com.example.googlehomeapisampleapp.history.MediaUrl
+import com.example.googlehomeapisampleapp.history.HistoryView
+import com.example.googlehomeapisampleapp.searchablehome.SearchableHomeBottomSheetView
 import com.example.googlehomeapisampleapp.ui.theme.GoogleHomeAPISampleAppTheme
 import com.example.googlehomeapisampleapp.view.automations.ActionView
 import com.example.googlehomeapisampleapp.view.automations.AutomationView
@@ -77,9 +78,9 @@ import com.example.googlehomeapisampleapp.view.automations.CandidatesView
 import com.example.googlehomeapisampleapp.view.automations.DraftView
 import com.example.googlehomeapisampleapp.view.automations.StarterView
 import com.example.googlehomeapisampleapp.view.devices.DeviceView
-import com.example.googlehomeapisampleapp.searchablehome.SearchableHomeBottomSheetView
 import com.example.googlehomeapisampleapp.view.devices.DevicesView
 import com.example.googlehomeapisampleapp.view.hubs.HubDiscoveryView
+import com.example.googlehomeapisampleapp.view.usermanagement.UserManagementView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.ActionViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.AutomationViewModel
@@ -88,24 +89,26 @@ import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.StarterViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
+import com.example.googlehomeapisampleapp.viewmodel.usermanagement.UserManagementViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The main Composable function for the Google Home API Sample App.
- * This function displays the appropriate view based on the state of the [HomeAppViewModel].
+ * The main Composable function for the Google Home API Sample App. This function displays the
+ * appropriate view based on the state of the [HomeAppViewModel].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeAppView(homeAppVM: HomeAppViewModel) {
-  /** Value tracking whether a user is signed-in on the app **/
+  /** Value tracking whether a user is signed-in on the app * */
   val isSignedIn: Boolean = homeAppVM.homeApp.permissionsManager.isSignedIn.collectAsState().value
 
-  /** Values tracking what is being selected on the app **/
+  /** Values tracking what is being selected on the app * */
   val selectedTab: HomeAppViewModel.NavigationTab by homeAppVM.selectedTab.collectAsState()
   val selectedDeviceVM: DeviceViewModel? by homeAppVM.selectedDeviceVM.collectAsState()
   val selectedAutomationVM: AutomationViewModel? by homeAppVM.selectedAutomationVM.collectAsState()
-  val selectedCandidateVMs: List<CandidateViewModel>? by homeAppVM.selectedCandidateVMs.collectAsState()
+  val selectedCandidateVMs: List<CandidateViewModel>? by
+    homeAppVM.selectedCandidateVMs.collectAsState()
   val selectedDraftVM: DraftViewModel? by homeAppVM.selectedDraftVM.collectAsState()
   val selectedStarterVM: StarterViewModel? =
     selectedDraftVM?.selectedStarterVM?.collectAsState()?.value
@@ -116,6 +119,7 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
   val moveDeviceFor = remember { mutableStateOf<DeviceViewModel?>(null) }
   val launchHubDiscovery = remember { mutableStateOf(false) }
   val showSearchableHome = remember { mutableStateOf(false) }
+  val showUserManagement = remember { mutableStateOf(false) }
   val selectedStructureVM by homeAppVM.selectedStructureVM.collectAsState()
 
   val showQrCodeScanner by homeAppVM.showQrCodeScanner.collectAsStateWithLifecycle()
@@ -138,18 +142,19 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
     }
   }
 
-  val hubActivationLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.StartActivityForResult(),
-    onResult = { result ->
-      if (result.resultCode == Activity.RESULT_OK) {
-        scope.launch { snackbarHostState.showSnackbar("Hub activation process completed.") }
-      } else {
-        homeAppVM.handleActivationFailure(result.resultCode)
-        scope.launch { snackbarHostState.showSnackbar("Hub activation cancelled or failed.") }
-      }
-      launchHubDiscovery.value = false
-    }
-  )
+  val hubActivationLauncher =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.StartActivityForResult(),
+      onResult = { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+          scope.launch { snackbarHostState.showSnackbar("Hub activation process completed.") }
+        } else {
+          homeAppVM.handleActivationFailure(result.resultCode)
+          scope.launch { snackbarHostState.showSnackbar("Hub activation cancelled or failed.") }
+        }
+        launchHubDiscovery.value = false
+      },
+    )
 
   LaunchedEffect(true) {
     homeAppVM.hubDiscoveryViewModel.hubActivationIntentFlow.collect { intent ->
@@ -160,9 +165,9 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
   /**
    * Periodically refreshes permissions while the user is signed in.
    *
-   * This loop helps ensure that permission state remains accurate in case
-   * it changes outside the app(e.g., in Google Home or system settings).
-   **/
+   * This loop helps ensure that permission state remains accurate in case it changes outside the
+   * app(e.g., in Google Home or system settings).
+   */
   LaunchedEffect(isSignedIn) {
     while (homeAppVM.homeApp.permissionsManager.isSignedIn.value) {
       homeAppVM.homeApp.permissionsManager.refreshPermissions()
@@ -177,12 +182,7 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
   GoogleHomeAPISampleAppTheme {
     // Top-level external frame for the views:
     Column(modifier = Modifier.fillMaxSize()) {
-      Spacer(
-        modifier = Modifier
-          .height(48.dp)
-          .fillMaxWidth()
-          .background(Color.Transparent)
-      )
+      Spacer(modifier = Modifier.height(48.dp).fillMaxWidth().background(Color.Transparent))
 
       if (showQrCodeScanner) {
         MatterQrCodeScanner(
@@ -193,7 +193,8 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
           onPermissionDenied = {
             homeAppVM.closeQrCodeScanner()
             scope.launch { snackbarHostState.showSnackbar("Camera permission denied.") }
-          }
+          },
+          onClose = { homeAppVM.closeQrCodeScanner() },
         )
         return@Column // Critical: Stop rendering the rest of the view hierarchy
       }
@@ -202,36 +203,35 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
 
       if (showOtaScreen) {
         OtaUpdateScreen(
-          onComplete = {
-            homeAppVM.closeOtaScreen()
-          },
-          paddingValues = PaddingValues()
+          onComplete = { homeAppVM.closeOtaScreen() },
+          paddingValues = PaddingValues(),
         )
         return@Column
       }
 
-      Column(
-        modifier = Modifier
-          .weight(1f)
-          .fillMaxWidth()
-          .background(Color.Transparent)
-      ) {
+      Column(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Transparent)) {
         if (!isSignedIn) {
           WelcomeView(homeAppVM)
         }
 
         // Video player screen — shown when a history event or HomeBrief thumbnail is tapped
         selectedVideoEvent?.let { event ->
-          HistoryVideoPlayerScreen(
-            event = event,
-            onBack = { homeAppVM.closeVideoPlayer() },
-          )
+          HistoryVideoPlayerScreen(event = event, onBack = { homeAppVM.closeVideoPlayer() })
           return@Column
         }
         if (selectedHistoryDeviceVM != null) {
           HistoryView(viewModel = homeAppVM)
           return@Column
         }
+        if (showUserManagement.value) {
+          val userManagementViewModel: UserManagementViewModel = viewModel()
+            UserManagementView(
+              viewModel = userManagementViewModel,
+              homeAppVM = homeAppVM,
+              onBack = { showUserManagement.value = false }
+            )
+            return@Column
+          }
         if (selectedDeviceVM != null) {
           DeviceView(homeAppVM)
         }
@@ -251,21 +251,26 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
           CandidatesView(homeAppVM)
         }
         when (selectedTab) {
-          HomeAppViewModel.NavigationTab.DEVICES -> DevicesView(
-            homeAppVM = homeAppVM,
-            onRequestCreateRoom = { showCreateRoom.value = true },
-            onRequestRoomSettings = { room -> roomSettingsFor.value = room },
-            onRequestMoveDevice = { device -> moveDeviceFor.value = device },
-            onRequestAddHub = { homeAppVM.startHubDiscovery(); launchHubDiscovery.value = true },
-            onSearchHome = { showSearchableHome.value = true }
-          )
+          HomeAppViewModel.NavigationTab.DEVICES ->
+            DevicesView(
+              homeAppVM = homeAppVM,
+              onRequestCreateRoom = { showCreateRoom.value = true },
+              onRequestRoomSettings = { room -> roomSettingsFor.value = room },
+              onRequestMoveDevice = { device -> moveDeviceFor.value = device },
+              onRequestAddHub = {
+                homeAppVM.startHubDiscovery()
+                launchHubDiscovery.value = true
+              },
+              onSearchHome = { showSearchableHome.value = true },
+              onNavigateToUserManagement = { showUserManagement.value = true }
+            )
 
           HomeAppViewModel.NavigationTab.AUTOMATIONS -> AutomationsView(homeAppVM)
 
           HomeAppViewModel.NavigationTab.HISTORY -> {
             androidx.compose.material3.Surface(
               color = MaterialTheme.colorScheme.background,
-              modifier = Modifier.fillMaxSize()
+              modifier = Modifier.fillMaxSize(),
             ) {
               HistoryView(viewModel = homeAppVM)
             }
@@ -284,41 +289,43 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
               value = roomName.value,
               onValueChange = { roomName.value = it },
               label = { Text("Room name") },
-              singleLine = true
+              singleLine = true,
             )
           },
           confirmButton = {
-            TextButton(onClick = {
-              val name = roomName.value.trim()
-              if (name.isNotEmpty()) {
-                homeAppVM.createRoomInSelectedStructure(name)
+            TextButton(
+              onClick = {
+                val name = roomName.value.trim()
+                if (name.isNotEmpty()) {
+                  homeAppVM.createRoomInSelectedStructure(name)
+                }
+                showCreateRoom.value = false
               }
-              showCreateRoom.value = false
-            }) { Text("Create") }
+            ) {
+              Text("Create")
+            }
           },
           dismissButton = {
             TextButton(onClick = { showCreateRoom.value = false }) { Text("Cancel") }
-          }
+          },
         )
       }
 
       roomSettingsFor.value?.let { activeRoom ->
         ModalBottomSheet(onDismissRequest = { roomSettingsFor.value = null }) {
-          Column(
-            Modifier
-              .fillMaxWidth()
-              .padding(16.dp)
-          ) {
+          Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth()) {
               Text("Room settings", modifier = Modifier.weight(1f))
-              TextButton(onClick = {
-                homeAppVM.deleteRoomFromSelectedStructure(activeRoom)
-                roomSettingsFor.value = null
-              }) { Text("Delete") }
+              TextButton(
+                onClick = {
+                  homeAppVM.deleteRoomFromSelectedStructure(activeRoom)
+                  roomSettingsFor.value = null
+                }
+              ) {
+                Text("Delete")
+              }
             }
-            val renameText = remember(activeRoom.id) {
-              mutableStateOf(activeRoom.name.value)
-            }
+            val renameText = remember(activeRoom.id) { mutableStateOf(activeRoom.name.value) }
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
               OutlinedTextField(
@@ -326,18 +333,20 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
                 onValueChange = { renameText.value = it },
                 label = { Text("Room name") },
                 singleLine = true,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
               )
               Spacer(Modifier.width(12.dp))
-              TextButton(onClick = {
-                val newName = renameText.value.trim()
-                if (newName.isNotEmpty() && newName != activeRoom.name.value) {
-                  homeAppVM.viewModelScope.launch {
-                    activeRoom.renameRoom(newName)
+              TextButton(
+                onClick = {
+                  val newName = renameText.value.trim()
+                  if (newName.isNotEmpty() && newName != activeRoom.name.value) {
+                    homeAppVM.viewModelScope.launch { activeRoom.renameRoom(newName) }
                   }
+                  roomSettingsFor.value = null
                 }
-                roomSettingsFor.value = null
-              }) { Text("Save") }
+              ) {
+                Text("Save")
+              }
             }
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { roomSettingsFor.value = null }) { Text("Close") }
@@ -354,28 +363,24 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
           val expanded = remember { mutableStateOf(false) }
           val selectedRoom = remember { mutableStateOf<RoomViewModel?>(null) }
 
-          Column(
-            Modifier
-              .fillMaxWidth()
-              .padding(16.dp)
-          ) {
+          Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Text("Move \"${deviceToMove.name.collectAsState().value}\" to…")
             Spacer(Modifier.height(12.dp))
 
             ExposedDropdownMenuBox(
               expanded = expanded.value,
-              onExpandedChange = { expanded.value = !expanded.value }
+              onExpandedChange = { expanded.value = !expanded.value },
             ) {
               TextField(
                 readOnly = true,
                 value = selectedRoom.value?.name?.value ?: "Select a room",
                 onValueChange = {},
                 trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth().menuAnchor()
+                modifier = Modifier.fillMaxWidth().menuAnchor(),
               )
               ExposedDropdownMenu(
                 expanded = expanded.value,
-                onDismissRequest = { expanded.value = false }
+                onDismissRequest = { expanded.value = false },
               ) {
                 rooms.forEach { room ->
                   val roomName by room.name.collectAsState()
@@ -384,7 +389,7 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
                     onClick = {
                       selectedRoom.value = room
                       expanded.value = false
-                    }
+                    },
                   )
                 }
               }
@@ -399,8 +404,10 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
                 }
               },
               enabled = selectedRoom.value != null,
-              modifier = Modifier.fillMaxWidth()
-            ) { Text("Move") }
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Text("Move")
+            }
 
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { moveDeviceFor.value = null }) { Text("Close") }
@@ -424,9 +431,19 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
         selectedStructureVM?.let { structure ->
           SearchableHomeBottomSheetView(
             structureId = structure.id,
-            onDismissRequest = { showSearchableHome.value = false }
+            onDismissRequest = { showSearchableHome.value = false },
           )
         }
+      }
+
+      val showCloudLinkingSheet by homeAppVM.showCloudLinkingSheet.collectAsStateWithLifecycle()
+      if (showCloudLinkingSheet) {
+        val cloudLinkingViewModel: CloudLinkingViewModel =
+          androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
+        CloudLinkingBottomSheet(
+          viewModel = cloudLinkingViewModel,
+          onDismissRequest = { homeAppVM.closeCloudLinkingSheet() },
+        )
       }
     }
   }

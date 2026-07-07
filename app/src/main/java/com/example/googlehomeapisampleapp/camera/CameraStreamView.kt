@@ -45,7 +45,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -68,12 +68,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.googlehomeapisampleapp.RuntimePermissionsManager
@@ -91,7 +91,6 @@ fun CameraStreamView(
   isTalkbackSupported: Boolean = false,
   isTalkbackEnabled: Boolean = false,
   isAudioRecording: Boolean = false,
-  deviceInfo: DeviceInfo? = null,
   isToggleRecordingInProgress: Boolean = false,
   isToggleAudioRecordingInProgress: Boolean = false,
   isDoorbell: Boolean = false,
@@ -122,13 +121,13 @@ fun CameraStreamView(
   }
 
   val sheetState = rememberModalBottomSheetState()
-  var showBottomSheet by remember { mutableStateOf(false) }
+  var showBottomSheet by rememberSaveable { mutableStateOf(false) }
 
   val isCurrentlyStreaming = (playerState == CameraStreamState.STREAMING_WITH_TALKBACK ||
           playerState == CameraStreamState.STREAMING_WITHOUT_TALKBACK) && !isToggleRecordingInProgress
 
   // Permission Logic
-  var microphonePermissionGranted by remember { mutableStateOf(false) }
+  var microphonePermissionGranted by rememberSaveable { mutableStateOf(false) }
   val launcher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.RequestPermission(),
     onResult = { isGranted ->
@@ -200,8 +199,8 @@ fun CameraStreamView(
           MicrophoneOverlay(
             isEnabled = isTalkbackEnabled,
             onToggle = { requestedEnabled ->
-              if (requestedEnabled && !permissionsManager?.hasMicrophonePermission()!!) {
-                permissionsManager.requestMicrophonePermission()
+              if (requestedEnabled && permissionsManager?.hasMicrophonePermission() != true) {
+                permissionsManager?.requestMicrophonePermission()
               } else {
                 onSetTalkback(requestedEnabled)
               }
@@ -225,7 +224,7 @@ fun CameraStreamView(
         contentAlignment = Alignment.BottomEnd
       ) {
         FloatingActionButton(onClick = { showBottomSheet = true }) {
-          Icon(Icons.Filled.Settings, "Settings")
+          Icon(Icons.Filled.Menu, "Menu")
         }
       }
     }
@@ -271,7 +270,7 @@ fun CameraStreamView(
 
         val availableModes = recordingModeOptions.filter { it.available }
         val currentMode = recordingModeOptions.firstOrNull { it.index == selectedRecordingModeIndex }
-        var showRecordingModeMenu by remember { mutableStateOf(false) }
+        var showRecordingModeMenu by rememberSaveable { mutableStateOf(false) }
 
         ListItem(
           headlineContent = { Text("Recording Mode") },
@@ -411,7 +410,7 @@ fun CameraStreamView(
             modifier = Modifier.clickable(enabled = isChimeToggleSupported) { onToggleChime() }
           )
 
-          var showTypeMenu by remember { mutableStateOf(false) }
+          var showTypeMenu by rememberSaveable { mutableStateOf(false) }
 
           ListItem(
             headlineContent = { Text("Physical Chime Type") },
@@ -459,40 +458,6 @@ fun CameraStreamView(
             }
           )
         }
-          // DEVICE INFORMATION
-          HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-          deviceInfo?.let { info ->
-              ListItem(
-                  headlineContent = {
-                      Text(
-                          "Model",
-                          fontWeight = FontWeight.Bold
-                      )
-                  },
-                  supportingContent = { Text(info.model) }
-              )
-
-              ListItem(
-                  headlineContent = {
-                      Text(
-                          "Software Version",
-                          fontWeight = FontWeight.Bold
-                      )
-                  },
-                  supportingContent = { Text(info.softwareVersion) }
-              )
-          } ?: run {
-              ListItem(
-                  headlineContent = {
-                      Text(
-                          "Device Information",
-                          fontWeight = FontWeight.Bold
-                      )
-                  },
-                  supportingContent = { Text("Not available") }
-              )
-          }
       }
     }
   }

@@ -74,4 +74,8 @@
   <string name="camera_content_description" translatable="false">Camera</string>
   <string name="camera_thumbnail_description" translatable="false">Thumbnail</string>
   <string name="search_home_camera_event_headline" translatable="false">Camera Event</string>
+
+  <string name="loading_text">Loading…</string>
+  <string name="error_text">Error</string>
+  <string name="not_available_text">N/A</string>
 </resources>
