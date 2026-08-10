@@ -238,7 +238,7 @@ fun ControlListItem(trait: Trait, type: DeviceType) {
           onCheckedChange = { state ->
             scope.launch {
               try {
-                if (state) trait.on() else trait.off()
+                if (state) trait.onWithRecallGlobalScene() else trait.off()
               } catch (e: HomeException) {
                 MainActivity.showWarning(this, e, "Toggling device on/off failed")
               }

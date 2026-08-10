@@ -82,9 +82,7 @@ constructor(
         coroutineContext = Dispatchers.IO,
         factoryRegistry = factoryRegistry,
         serverClientId = serverClientId,
-        // If you are not using advanced camera features, you should continue to use the original
-        // scope by changing this to HOME_PLATFORM_SCOPE_VERSION_1.
-        homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_2,
+        homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_1,
       )
     Log.d(TAG, "switchAccount: config.homePlatformScope: ${config.homePlatformScope}")
     Log.i(TAG, "AccountManager switching account to $userId")

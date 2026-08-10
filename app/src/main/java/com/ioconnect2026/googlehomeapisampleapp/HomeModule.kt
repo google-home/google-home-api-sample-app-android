@@ -39,7 +39,6 @@ import com.google.home.matter.standard.MediaInput
 import com.google.home.matter.standard.MediaPlayback
 import com.google.home.matter.standard.OccupancySensing
 import com.google.home.matter.standard.OccupancySensorDevice
-import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.OnOffLightSwitchDevice
 import com.google.home.matter.standard.OnOffPluginUnitDevice
@@ -100,7 +99,6 @@ object HomeModule {
       MediaInput,
       MediaPlayback,
       OccupancySensing,
-      OnOff,
       TemperatureControl,
       TemperatureMeasurement,
       WindowCovering,
@@ -130,9 +128,7 @@ object HomeModule {
     HomeConfig(
       coroutineContext = Dispatchers.IO,
       factoryRegistry = registry,
-      // If you are not using advanced camera features, you should continue to use the original
-      // scope by changing this to HOME_PLATFORM_SCOPE_VERSION_1.
-      homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_2,
+      homePlatformScope = HomeConfig.HomePlatformScope.HOME_PLATFORM_SCOPE_VERSION_1,
     )
 
   /**
