@@ -328,7 +328,13 @@ fun DeviceListItem(
   val scope: CoroutineScope = rememberCoroutineScope()
   val deviceStatus: String = deviceVM.status.collectAsState().value
   val deviceName: String = deviceVM.name.collectAsState().value
-  val otaUiState by deviceVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
+
+  val currentOtaUiState by homeAppVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
+  val activeOtaDeviceId by homeAppVM.otaDeviceId.collectAsStateWithLifecycle()
+  val activeOtaDeviceIds by homeAppVM.otaDeviceIds.collectAsStateWithLifecycle()
+
+  val isThisDeviceUpdating = deviceVM.id == activeOtaDeviceId || activeOtaDeviceIds.contains(deviceVM.id)
+  val otaUiState = if (isThisDeviceUpdating) currentOtaUiState else OtaUiState.UpToDate()
 
   LaunchedEffect(otaUiState) {
     if (otaUiState is OtaUiState.Downloading || otaUiState is OtaUiState.Installing) {

@@ -38,13 +38,7 @@ class UserManagementViewModel : ViewModel() {
     suspend fun createAndShareInvitation(structure: Structure): String? {
         return try {
             val trait = structure.trait(StructureUserManagement).first()
-
-            // TODO: In SDK 17.1.0, createInvitation() does not accept parameters.
-            // The UserRole enum exists, but the CreateInvitationRequest is parameterless.
-            // Replace with the following once the SDK is updated:
-            // val response = trait.createInvitation(intendedUserRole = StructureUserManagementTrait.UserRole.Admin)
-            val response = trait.createInvitation()
-
+            val response = trait.createInvitation(intendedUserRole = StructureUserManagementTrait.UserRole.Admin)
             response.token
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create invitation: ${e.message}")
@@ -56,14 +50,7 @@ class UserManagementViewModel : ViewModel() {
         return try {
             val trait = structure.trait(StructureUserManagement).first()
             val invitations = trait.listInvitations()
-
-            // TODO: In SDK 17.1.0, InvitationDetails only exposes invitationId, invitationToken,
-            // inviterUserId, and creationTimestamp. The 'status' field is defined in the backend
-            // Protobuf schema but stripped from this SDK version.
-            // Once the SDK is updated to expose 'status', you can filter this list as shown below:
-            // invitations.filter { it.status == StructureUserManagementTrait.InvitationStatus.Pending }
-            @Suppress("UNCHECKED_CAST")
-            invitations as? List<InvitationDetails> ?: emptyList()
+            invitations.filter { it.status == StructureUserManagementTrait.InvitationStatus.Pending }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list invitations: ${e.message}")
             emptyList()

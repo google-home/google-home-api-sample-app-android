@@ -48,6 +48,7 @@ import com.google.home.matter.standard.RootNodeDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -71,9 +72,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+import com.example.googlehomeapisampleapp.AuthenticatedImageLoader
+import coil3.ImageLoader
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.asStateFlow
+
 @HiltViewModel
 open class CameraStreamViewModel @Inject internal constructor(
-  @param:ApplicationContext private val context: Context,
+  @AuthenticatedImageLoader val authenticatedImageLoader: ImageLoader,
   private val liveStreamPlayerFactory: LiveStreamPlayerFactory,
   private val onOffControllerFactory: OnOffControllerFactory,
   private val cameraAvStreamManagementControllerFactory: CameraAvStreamManagementControllerFactory,
@@ -83,10 +89,6 @@ open class CameraStreamViewModel @Inject internal constructor(
   private val videoAnalysisControllerFactory: VideoAnalysisControllerFactory,
   private val cameraTimelinePresenter: CameraTimelinePresenter,
 ) : ViewModel() {
-  private val TAG = "CameraStreamViewModel"
-  private val TOGGLE_WAIT_TIME = 4000L
-  private val zoneNameRegex = Regex("""^Zone\s+(\d+)$""", RegexOption.IGNORE_CASE)
-
   private var activeJobs = mutableListOf<Job>()
   private var recordingOffDebounceJob: Job? = null
   private var recordingOnDebounceJob: Job? = null
@@ -148,13 +150,13 @@ open class CameraStreamViewModel @Inject internal constructor(
   val isIndoorChimeEnabled: StateFlow<Boolean> =
     _doorbellChimeController
       .flatMapLatest { it?.isChimeEnabled ?: flowOf(true) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), true)
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), true)
 
   @OptIn(ExperimentalCoroutinesApi::class)
   val externalChimeType: StateFlow<ChimeTrait.ExternalChimeType> =
     _doorbellChimeController
       .flatMapLatest { it?.externalChimeType ?: flowOf(ChimeTrait.ExternalChimeType.Electronic) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), ChimeTrait.ExternalChimeType.Electronic)
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), ChimeTrait.ExternalChimeType.Electronic)
 
   // Recording mode controller
   private val _recordingModeController = MutableStateFlow<RecordingModeController?>(null)
@@ -167,7 +169,7 @@ open class CameraStreamViewModel @Inject internal constructor(
   val recordingModeOptions: StateFlow<List<RecordingModeOption>> =
     _recordingModeController
       .flatMapLatest { it?.recordingModeOptions ?: flowOf(emptyList()) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), emptyList())
 
   /**
    * Emits the index of the currently active recording mode, or null if unavailable.
@@ -176,7 +178,7 @@ open class CameraStreamViewModel @Inject internal constructor(
   val selectedRecordingModeIndex: StateFlow<Int?> =
     _recordingModeController
       .flatMapLatest { it?.selectedRecordingModeIndex ?: flowOf(null) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), null)
 
   // Activity Zone Controller
   private val _activityZoneController = MutableStateFlow<ActivityZoneController?>(null)
@@ -185,16 +187,74 @@ open class CameraStreamViewModel @Inject internal constructor(
   val activityZones: StateFlow<List<ActivityZone>> =
     _activityZoneController
       .flatMapLatest { it?.activityZones ?: flowOf(emptyList()) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), emptyList())
 
   @OptIn(ExperimentalCoroutinesApi::class)
   val twoDCartesianMax: StateFlow<ZoneManagementTrait.TwoDCartesianVertexStruct?> =
     _activityZoneController
       .flatMapLatest { it?.twoDCartesianMax ?: flowOf(null) }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), null)
 
   private val _zoneUpdateStatus = MutableStateFlow<ZoneUpdateStatus>(ZoneUpdateStatus.Idle)
   val zoneUpdateStatus: StateFlow<ZoneUpdateStatus> = _zoneUpdateStatus
+
+  // Camera Snapshot State
+  private val _liveSnapshotUrl = MutableStateFlow<String?>(null)
+  private val _isFetchingLiveSnapshot = MutableStateFlow(false)
+  val isFetchingLiveSnapshot: StateFlow<Boolean> = _isFetchingLiveSnapshot.asStateFlow()
+
+  /**
+   * StateFlow emitting the camera's static preview image URL provided by the [CameraSnapshot] trait.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val previewImageUrl: StateFlow<String?> =
+    _activityZoneController
+      .flatMapLatest { it?.previewImageUrl ?: flowOf(null) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), null)
+
+  /**
+   * StateFlow emitting the effective snapshot URL to display (prefers on-demand live snapshot URL over static preview image URL).
+   */
+  val snapshotUrl: StateFlow<String?> =
+    combine(_liveSnapshotUrl, previewImageUrl) { liveUrl, previewUrl ->
+      liveUrl ?: previewUrl
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), null)
+
+  /**
+   * Triggers an on-demand live snapshot fetch from the camera.
+   * Updates [snapshotUrl] via [_liveSnapshotUrl] on success, or emits a UI message on failure.
+   */
+  fun refreshLiveSnapshot() {
+    val controller = _activityZoneController.value ?: return
+    if (!isRecording.value) {
+      viewModelScope.launch {
+        _uiMessage.emit("Cannot refresh snapshot when camera is off")
+      }
+      return
+    }
+    viewModelScope.launch {
+      _isFetchingLiveSnapshot.value = true
+      try {
+        val url = controller.fetchLiveSnapshotUrl()
+        if (url != null) {
+          val timestamp = System.currentTimeMillis()
+          // Append timestamp query parameter to URL to force UI image reload when fetching a new snapshot.
+          // Note: Query parameter cache-busting is intentionally used here to bypass Coil caching without overriding image loader defaults.
+          val cacheBustedUrl = if (url.contains("?")) "$url&t=$timestamp" else "$url?t=$timestamp"
+          _liveSnapshotUrl.value = cacheBustedUrl
+          _uiMessage.emit("Live snapshot updated")
+        } else {
+          _uiMessage.emit("Failed to refresh live snapshot")
+        }
+      } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        Log.e(TAG, "Error refreshing live snapshot", e)
+        _uiMessage.emit("Error fetching live snapshot: ${e.message}")
+      } finally {
+        _isFetchingLiveSnapshot.value = false
+      }
+    }
+  }
 
   // Video Analysis (Gemini AI Features) Controllers state flow
   private val _videoAnalysisControllers = MutableStateFlow<List<VideoAnalysisController>>(emptyList())
@@ -211,7 +271,7 @@ open class CameraStreamViewModel @Inject internal constructor(
     .flatMapLatest { it.isRecording }
     .stateIn(
       scope = viewModelScope,
-      started = SharingStarted.WhileSubscribed(5000),
+      started = SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS),
       initialValue = false // This will still be false until the first cloud sync
     )
   /** * Observe the Audio Recording state.
@@ -226,7 +286,7 @@ open class CameraStreamViewModel @Inject internal constructor(
     .onEach { isEnabled ->
       Log.d("AUDIO_DEBUG", "OBSERVER: Cloud Trait Updated -> Recording Enabled = $isEnabled")
     }
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), false)
 
   // Add this init block or update your existing one to "unlock" the state
   private val isHardwareReady = MutableStateFlow(false)
@@ -259,11 +319,11 @@ open class CameraStreamViewModel @Inject internal constructor(
   @OptIn(ExperimentalCoroutinesApi::class)
   val isTalkbackEnabled: StateFlow<Boolean> = _liveStreamPlayer
     .flatMapLatest { it?.isTalkbackEnabled ?: flowOf(false) }
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), false)
 
   val isTalkbackSupported: StateFlow<Boolean> = _liveStreamPlayer
     .map { it?.isTalkbackSupported == true }
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), false)
 
   private val _state = MutableStateFlow(NOT_STARTED)
   val state: StateFlow<CameraStreamState> = _state
@@ -284,7 +344,7 @@ open class CameraStreamViewModel @Inject internal constructor(
       }
       .stateIn(
         viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
+        SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS),
         null
       )
 
@@ -428,7 +488,15 @@ open class CameraStreamViewModel @Inject internal constructor(
 
     viewModelScope.launch {
       _zoneUpdateStatus.value = ZoneUpdateStatus.InProgress
-      _zoneUpdateStatus.value = controller.addZone(zone)
+      val initialCount = activityZones.value.count { it.modifiable }
+      val result = controller.addZone(zone)
+      if (result is ZoneUpdateStatus.Success) {
+        // Wait for the GHP trait Flow to reflect the new zone before clearing the progress state
+        withTimeoutOrNull(TOGGLE_WAIT_TIME) {
+          activityZones.first { zones -> zones.count { it.modifiable } > initialCount }
+        }
+      }
+      _zoneUpdateStatus.value = result
     }
   }
 
@@ -439,7 +507,14 @@ open class CameraStreamViewModel @Inject internal constructor(
     val controller = _activityZoneController.value ?: return
     viewModelScope.launch {
       _zoneUpdateStatus.value = ZoneUpdateStatus.InProgress
-      _zoneUpdateStatus.value = controller.deleteZone(zoneId)
+      val result = controller.deleteZone(zoneId)
+      if (result is ZoneUpdateStatus.Success) {
+        // Wait for the GHP trait Flow to reflect the deletion before clearing the progress state
+        withTimeoutOrNull(TOGGLE_WAIT_TIME) {
+          activityZones.first { zones -> zones.none { it.zoneId == zoneId } }
+        }
+      }
+      _zoneUpdateStatus.value = result
     }
   }
 
@@ -457,11 +532,12 @@ open class CameraStreamViewModel @Inject internal constructor(
         val success = controller.setAiFeaturesEnabled(enabled)
         if (!success) {
           Log.w(TAG, "Failed to toggle AI features enablement to $enabled for ${controller.label}")
-          Toast.makeText(context, "Failed to toggle ${controller.label}", Toast.LENGTH_SHORT).show()
+          _uiMessage.emit("Failed to toggle ${controller.label}")
         }
       } catch (e: Exception) {
+        if (e is CancellationException) throw e
         Log.e(TAG, "Exception toggling AI features enablement for ${controller.label}", e)
-        Toast.makeText(context, "Error toggling ${controller.label}: ${e.localizedMessage ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+        _uiMessage.emit("Error toggling ${controller.label}: ${e.localizedMessage ?: "Unknown error"}")
       } finally {
         _isToggleAiFeaturesInProgress.value = false
       }
@@ -495,6 +571,9 @@ open class CameraStreamViewModel @Inject internal constructor(
     recordingOffDebounceJob = null
     recordingOnDebounceJob?.cancel()
     recordingOnDebounceJob = null
+
+    _liveSnapshotUrl.value = null
+    _isFetchingLiveSnapshot.value = false
 
     activeJobs.forEach { it.cancel() }
     activeJobs.clear()
@@ -799,7 +878,7 @@ open class CameraStreamViewModel @Inject internal constructor(
   @OptIn(ExperimentalCoroutinesApi::class)
   val isChimeToggleSupported: StateFlow<Boolean> = _doorbellChimeController
     .flatMapLatest { it?.isChimeToggleSupported ?: flowOf(false) }
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), false)
 
 
   fun toggleIndoorChime() {
@@ -825,6 +904,13 @@ open class CameraStreamViewModel @Inject internal constructor(
       Log.d(TAG, "Setting Physical Chime Type to: $type")
       controller.setExternalChimeType(type)
     }
+  }
+
+  companion object {
+    private const val TAG = "CameraStreamViewModel"
+    private const val TOGGLE_WAIT_TIME = 4000L
+    private const val FLOW_STOP_TIMEOUT_MS = 5000L
+    private val zoneNameRegex = Regex("""^Zone\s+(\d+)$""", RegexOption.IGNORE_CASE)
   }
 }
 

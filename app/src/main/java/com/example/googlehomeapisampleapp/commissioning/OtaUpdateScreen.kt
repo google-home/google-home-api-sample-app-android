@@ -39,6 +39,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -46,6 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
+import kotlinx.coroutines.delay
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Extracts a clean version string from raw software version text.
@@ -56,6 +65,14 @@ fun formatVersionString(rawVersion: String?): String? {
     if (rawVersion.isNullOrBlank()) return null
     val match = Regex("""\b\d+\.\d+(\.\d+)*\b""").find(rawVersion)
     return match?.value ?: rawVersion
+}
+
+/**
+ * Formats the current local device time in English format with seconds precision.
+ */
+private fun formatCurrentLocalTime(): String {
+    val formatter = DateTimeFormatter.ofPattern("MMM d, yyyy, h:mm:ss a", Locale.ENGLISH)
+    return ZonedDateTime.now().format(formatter)
 }
 
 /**
@@ -77,6 +94,14 @@ fun OtaUpdateScreen(
     modifier: Modifier = Modifier
 ) {
     val uriHandler = LocalUriHandler.current
+    var currentTimeString by remember { mutableStateOf(formatCurrentLocalTime()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentTimeString = formatCurrentLocalTime()
+            delay(1000)
+        }
+    }
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
@@ -94,6 +119,16 @@ fun OtaUpdateScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // Local current time display in English
+                Text(
+                    text = currentTimeString,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Device name
                 Text(
                     text = deviceName,
@@ -177,16 +212,16 @@ fun OtaUpdateScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(text = "Installing update & restarting device...", style = MaterialTheme.typography.bodyMedium)
                             }
-                            is OtaUiState.Deferred -> {
+                            is OtaUiState.Delayed -> {
                                 Text(
-                                    text = "Update Deferred: ${otaUiState.reason}",
+                                    text = "Delayed: ${otaUiState.reason}",
                                     color = MaterialTheme.colorScheme.secondary,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
                             is OtaUiState.Failed -> {
                                 Text(
-                                    text = "Update failed. Device restored to previous version.",
+                                    text = "Failed. Device restored to previous version.",
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium
                                 )

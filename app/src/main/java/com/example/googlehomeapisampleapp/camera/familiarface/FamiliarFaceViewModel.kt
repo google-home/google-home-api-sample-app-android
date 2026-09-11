@@ -20,7 +20,9 @@ import com.google.home.google.FaceLibraryTrait.FaceCategory.FaceCategoryNotAPers
 import com.google.home.google.FaceLibraryTrait.FaceCategory.FaceCategoryUnknown
 import com.google.home.google.FaceLibraryTrait.FaceCategory.FaceCategoryUnlabeled
 import com.google.home.FeatureConsentType
+import com.example.googlehomeapisampleapp.AuthenticatedImageLoader
 import com.example.googlehomeapisampleapp.HomeClientProvider
+import coil3.ImageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -81,6 +83,7 @@ sealed interface Library {
 @HiltViewModel
 open class FamiliarFaceViewModel @Inject internal constructor(
     private val homeClientProvider: HomeClientProvider,
+    @param:AuthenticatedImageLoader val authenticatedImageLoader: ImageLoader,
 ) : ViewModel() {
     private val lock = Mutex()
     private val _structureId = MutableStateFlow<String?>(null)

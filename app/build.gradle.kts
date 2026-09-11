@@ -17,10 +17,11 @@ android {
     applicationId = "com.example.googlehomeapisampleapp"
     minSdk = 29
     targetSdk = 36
-    versionCode = 44
-    versionName = "1.10.0"
+    versionCode = 45
+    versionName = "1.10.1"
 
-    // Store your GCP project web client ID and Playground OAuth Client ID in local.properties and access them
+    // Store your GCP project web client ID and Playground OAuth Client ID in local.properties and
+    // access them
     // via project properties.
     // If local.properties doesn't exist in your app root folder, just create it
     // e.g. add these lines to your local.properties
@@ -81,6 +82,9 @@ dependencies {
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.browser)
+  implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.play.services)
   // Home API SDK dependency:
   implementation(libs.play.services.home)
   implementation(libs.play.services.home.types)
@@ -92,6 +96,7 @@ dependencies {
   implementation(libs.dagger.hilt.android)
   implementation(libs.googleid)
   ksp(libs.hilt.android.compiler)
+  ksp("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.0")
   implementation(libs.androidx.hilt.navigation.compose)
   ksp(libs.androidx.hilt.compiler)
   implementation(libs.stream.webrtc.android)

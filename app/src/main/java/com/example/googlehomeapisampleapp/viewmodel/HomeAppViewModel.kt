@@ -30,6 +30,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.filter
 import androidx.paging.insertSeparators
 import androidx.paging.map
 import com.example.googlehomeapisampleapp.BuildConfig
@@ -38,10 +39,12 @@ import com.example.googlehomeapisampleapp.HomeApp
 import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFactory
 import com.example.googlehomeapisampleapp.MainActivity
 import com.example.googlehomeapisampleapp.cloudlinking.CurrentStructureRepository
+import com.example.googlehomeapisampleapp.history.HistoryDeviceTypeFilter
 import com.example.googlehomeapisampleapp.history.HistoryEventUi
 import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
 import com.example.googlehomeapisampleapp.history.HomeBriefCameraEvent
 import com.example.googlehomeapisampleapp.history.HomeHistoryPagingSource
+import com.example.googlehomeapisampleapp.history.toApiFilter
 import com.example.googlehomeapisampleapp.history.toUiDataModel
 import com.example.googlehomeapisampleapp.repository.AutomationsRepository
 import com.example.googlehomeapisampleapp.viewmodel.automations.ActionViewModel
@@ -54,17 +57,20 @@ import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.home.HistoryFilter
 import com.google.home.HomeBriefsPage
 import com.google.home.Structure
 import com.google.home.featureConsentStatus
 import com.google.home.ConsentStatus
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.automation.CommandCandidate
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestor
 import com.google.home.automation.DraftAutomation
 import com.google.home.automation.NodeCandidate
 import com.google.home.automation.UnknownDeviceType
 import com.google.home.getHistoryManager
 import com.google.home.getHomeBriefsManager
+import com.google.home.matter.standard.OtaRequestorDevice
 import com.google.home.userPresenceSettings
 import com.google.home.deleteHistory
 import com.google.home.google.AreaAttendanceState
@@ -73,10 +79,16 @@ import com.google.home.google.AreaPresenceState
 import com.google.home.google.AreaPresenceStateTrait
 import com.google.home.google.UserPresenceSettings
 import com.google.home.google.UserPresenceSettingsTrait
+import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
+import com.example.googlehomeapisampleapp.viewmodel.ota.mapUpdateStateToUiState
+import com.google.home.matter.standard.BasicInformation
+import com.google.home.matter.standard.RootNodeDevice
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -85,21 +97,29 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+
+private data class HistoryQueryState(
+    val structureId: String,
+    val deviceId: String?,
+    val deviceTypeFilter: HistoryDeviceTypeFilter,
+)
 
 class HomeAppViewModel(
   val homeApp: HomeApp,
@@ -117,6 +137,7 @@ class HomeAppViewModel(
     const val TAG = "HomeAppViewModel"
     private const val FEATURE_PRESENCE_SENSING_NAME = "FEATURE_PRESENCE_SENSING"
     private const val FEATURE_PRESENCE_SENSING_ID = 3L
+    private const val OTA_TIMEOUT_MILLIS = 20 * 60 * 1000L
   }
 
   // Container tracking the active navigation tab:
@@ -143,6 +164,20 @@ class HomeAppViewModel(
    */
   private val _showOtaScreen = MutableStateFlow(false)
   val showOtaScreen: StateFlow<Boolean> = _showOtaScreen
+
+  private val _otaUiState = MutableStateFlow<OtaUiState>(OtaUiState.Loading)
+  val otaUiState: StateFlow<OtaUiState> = _otaUiState
+
+  private val _otaDeviceName = MutableStateFlow<String>("Device")
+  val otaDeviceName: StateFlow<String> = _otaDeviceName
+
+  private val _otaDeviceId = MutableStateFlow<String?>(null)
+  val otaDeviceId: StateFlow<String?> = _otaDeviceId
+
+  private val _otaDeviceIds = MutableStateFlow<List<String>>(emptyList())
+  val otaDeviceIds: StateFlow<List<String>> = _otaDeviceIds
+
+  private var otaJob: Job? = null
 
   // Containers tracking the active object being edited:
   val selectedStructureVM: StateFlow<StructureViewModel?> =
@@ -349,27 +384,43 @@ class HomeAppViewModel(
   private val _homeBriefsLoading = MutableStateFlow(false)
   val homeBriefsLoading: StateFlow<Boolean> = _homeBriefsLoading.asStateFlow()
 
+  private val _selectedDeviceTypeFilter = MutableStateFlow(HistoryDeviceTypeFilter.All)
+  val selectedDeviceTypeFilter: StateFlow<HistoryDeviceTypeFilter> = _selectedDeviceTypeFilter.asStateFlow()
+
+  fun selectDeviceTypeFilter(filter: HistoryDeviceTypeFilter) {
+    _selectedDeviceTypeFilter.value = filter
+  }
+
   @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
   val historyFlow: Flow<PagingData<HistoryEventUi>> =
     combine(
         selectedStructureVM.filterNotNull().map { it.id }.distinctUntilChanged(),
         selectedHistoryDeviceVM.map { it?.device?.id?.id }.distinctUntilChanged(),
-      ) { structureId, deviceId ->
-        structureId to deviceId
+        selectedDeviceTypeFilter,
+      ) { structureId, deviceId, deviceTypeFilter ->
+        HistoryQueryState(structureId, deviceId, deviceTypeFilter)
       }
-      .flatMapLatest { (structureId, deviceId) ->
+      .flatMapLatest { queryState ->
+        val structureId = queryState.structureId
+        val deviceId = queryState.deviceId
+        val deviceTypeFilter = queryState.deviceTypeFilter
+
         // 1. Get the Structure object from the list of available structures
         val structure =
           structureVMs.value.firstOrNull { it.id == structureId }?.structure
             ?: return@flatMapLatest kotlinx.coroutines.flow.flowOf(PagingData.empty())
 
-        Pager(PagingConfig(pageSize = 20)) {
+        // When deviceId is present (device-scoped history), ignore structure category chip filter
+        val activeFilter = if (deviceId != null) HistoryDeviceTypeFilter.All else deviceTypeFilter
+
+        Pager(PagingConfig(pageSize = 50)) {
             // 2. Obtain historyManager from the specific structure
             val historyManager = structure.getHistoryManager()
             val builder = HomeHistoryPagingSource.Builder(historyManager)
 
-            // 3. Apply the device filter to stop global history fetching
-            deviceId?.let { builder.addHistoryFilters(com.google.home.HistoryFilter.id(it)) }
+            // 3. Apply API-side filters (by device ID or category filter)
+            deviceId?.let { builder.addHistoryFilters(HistoryFilter.id(it)) }
+            activeFilter.toApiFilter()?.let { builder.addHistoryFilters(it) }
             builder.build()
           }
           .flow
@@ -378,6 +429,16 @@ class HomeAppViewModel(
               .map { historyItem ->
                 // 4. Map raw SDK HistoryItem to your app's UI model
                 historyItem.toUiDataModel()
+              }
+              .filter { uiModel ->
+                when (activeFilter) {
+                  HistoryDeviceTypeFilter.All -> true
+                  HistoryDeviceTypeFilter.Camera -> uiModel is HistoryUiDataModel.CameraEvent
+                  HistoryDeviceTypeFilter.DoorLock -> uiModel is HistoryUiDataModel.DoorLockEvent
+                  HistoryDeviceTypeFilter.Thermostat ->
+                    uiModel is HistoryUiDataModel.ThermostatStateChange ||
+                    uiModel is HistoryUiDataModel.ExtendedThermostatStateChange
+                }
               }
               .insertSeparators { before, after ->
                 // 5. Add date separators (Today, Yesterday, etc.)
@@ -563,48 +624,108 @@ class HomeAppViewModel(
 
   // OTA Screen Functions
   /**
-   * Shows the OTA information screen for a camera device. Called after a camera device is
-   * successfully commissioned.
+   * Shows the OTA information screen for a device
+   * Multi-part devices require enableMultipartDevices = true to expose
+   * their root node which contains OtaRequestorDevice / OtaSoftwareUpdateRequestor.
    */
-  fun showOtaScreen(deviceId: String? = null) {
-    viewModelScope.launch {
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun showOtaScreen(deviceId: String? = null, deviceIds: List<String>? = null) {
+    _showOtaScreen.value = true
+    _otaUiState.value = OtaUiState.Loading
+
+    val structure = selectedStructureVM.value?.structure
+    if (structure == null) {
+      Log.w(TAG, "No structure selected, skipping OTA stream")
+      return
+    }
+
+    val targetIds = mutableListOf<String>()
+    if (deviceId != null) targetIds.add(deviceId)
+    if (deviceIds != null) targetIds.addAll(deviceIds)
+
+    _otaDeviceId.value = deviceId
+    _otaDeviceIds.value = targetIds
+    Log.i(TAG, "showOtaScreen: starting OTA flow with primaryDeviceId=$deviceId, targetIds=$targetIds")
+
+    otaJob?.cancel()
+    otaJob = viewModelScope.launch {
       try {
-        var deviceFound = false
-        if (deviceId != null) {
-          val structure = selectedStructureVM.value
-          val matchedDevice = structure?.roomVMs?.value?.flatMap { it.deviceVMs.value }?.find { it.id == deviceId }
-            ?: structure?.deviceVMsWithoutRooms?.value?.find { it.id == deviceId }
-          if (matchedDevice != null) {
-            Log.d(TAG, "Selected commissioned device for OTA screen: ${matchedDevice.id}")
-            selectedDeviceVM.emit(matchedDevice)
-            deviceFound = true
-          }
+        withTimeout(OTA_TIMEOUT_MILLIS) {
+          observeOtaFlow(structure, targetIds)
         }
-        if (!deviceFound) {
-          val cameraVM = selectedStructureVM.value?.deviceVMsWithoutRooms?.value?.find { it.typeName.value == "Camera" || it.name.value.contains("Camera", ignoreCase = true) }
-            ?: selectedStructureVM.value?.roomVMs?.value?.flatMap { it.deviceVMs.value }?.find { it.typeName.value == "Camera" || it.name.value.contains("Camera", ignoreCase = true) }
-          if (cameraVM != null) {
-            Log.d(TAG, "Selected fallback camera device for OTA screen: ${cameraVM.id}")
-            selectedDeviceVM.emit(cameraVM)
-          } else {
-            selectedDeviceVM.emit(null)
-          }
-        }
-        _showOtaScreen.emit(true)
+      } catch (e: TimeoutCancellationException) {
+        Log.w(TAG, "OTA update timed out for deviceId=$deviceId", e)
+        _otaUiState.value = OtaUiState.Failed(currentVersionString = "OTA update timed out")
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
-        Log.e(TAG, "Error emitting OTA screen state", e)
+        Log.e(TAG, "OTA update failed due to exception for deviceId=$deviceId", e)
+        _otaUiState.value = OtaUiState.Failed(currentVersionString = e.message)
       }
     }
   }
 
-  fun closeOtaScreen() {
-    viewModelScope.launch {
-      try {
-        _showOtaScreen.emit(false)
-      } catch (e: Exception) {
-        Log.e(TAG, "Error closing OTA screen state", e)
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private suspend fun observeOtaFlow(structure: Structure, targetIds: List<String>) {
+    Log.i(TAG, "observeOtaFlow: subscribing to structure devices (enableMultipartDevices = true) with targetIds=$targetIds")
+    structure
+      .devices(enableMultipartDevices = true)
+      .mapNotNull { devices ->
+        val chosenDevice = if (targetIds.isNotEmpty()) {
+          devices.firstOrNull { dev ->
+            targetIds.contains(dev.id.id) && (dev.has(OtaRequestorDevice) || dev.has(RootNodeDevice))
+          } ?: devices.firstOrNull { targetIds.contains(it.id.id) && it.has(OtaSoftwareUpdateRequestor) }
+        } else {
+          devices.firstOrNull { it.has(OtaRequestorDevice) || it.has(RootNodeDevice) || it.has(OtaSoftwareUpdateRequestor) }
+        }
+        if (chosenDevice != null) {
+          Log.i(TAG, "observeOtaFlow: Found matching OTA target Device ID='${chosenDevice.id.id}', name='${chosenDevice.name}'")
+        }
+        chosenDevice
       }
-    }
+      .flatMapLatest { homeDevice ->
+        _otaDeviceId.value = homeDevice.id.id
+        _otaDeviceName.value = homeDevice.name
+        Log.i(TAG, "observeOtaFlow: Observing OTA stream for Device ID='${homeDevice.id.id}', name='${homeDevice.name}'")
+
+        val otaTraitFlow = combine(
+          homeDevice.typeOrNull(OtaRequestorDevice),
+          homeDevice.typeOrNull(RootNodeDevice)
+        ) { otaRequestor, rootNode ->
+          otaRequestor?.trait(OtaSoftwareUpdateRequestor)
+            ?: rootNode?.trait(OtaSoftwareUpdateRequestor)
+        }.filterNotNull()
+
+        val versionFlow = homeDevice.typeOrNull(RootNodeDevice)
+          .map { rootNode -> rootNode?.trait(BasicInformation)?.softwareVersionString }
+          .onStart { emit(null) }
+
+        combine(otaTraitFlow, versionFlow) { otaTrait, versionString ->
+          otaTrait to versionString
+        }
+      }
+      .distinctUntilChanged()
+      .map { (otaTrait, versionString) ->
+        mapUpdateStateToUiState(
+          updateState = otaTrait.updateState,
+          progress = otaTrait.updateStateProgress,
+          versionString = versionString
+        ).also { mappedState ->
+          Log.i(TAG, "observeOtaFlow: Device ID='${_otaDeviceId.value}' state update: updateState=${otaTrait.updateState}, progress=${otaTrait.updateStateProgress}, version=$versionString -> mappedState=$mappedState")
+        }
+      }
+      .collect { state ->
+        _otaUiState.value = state
+      }
+  }
+
+  fun closeOtaScreen() {
+    otaJob?.cancel()
+    otaJob = null
+    _showOtaScreen.value = false
+    _otaUiState.value = OtaUiState.Loading
+    _otaDeviceId.value = null
+    _otaDeviceIds.value = emptyList()
   }
 
   /**

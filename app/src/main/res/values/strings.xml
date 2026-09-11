@@ -9,6 +9,7 @@
 
   <string name="tab_button_devices">Devices</string>
   <string name="tab_button_automations">Automations</string>
+  <string name="tab_button_activity">Activity</string>
 
   <string name="devices_structure_loading">Loading…</string>
   <string name="devices_button_add">+ Add Device</string>
@@ -85,4 +86,18 @@
   <string name="loading_text">Loading…</string>
   <string name="error_text">Error</string>
   <string name="not_available_text">N/A</string>
+
+  <!-- Activity Zone -->
+  <string name="activity_zone_config_title">Activity Zone Configuration</string>
+  <string name="activity_zone_camera_off">Camera is Off</string>
+  <string name="activity_zone_no_snapshot">No Snapshot Available</string>
+  <string name="activity_zone_refresh_snapshot">Refresh Live Snapshot</string>
+  <string name="activity_zone_configured_count">Configured Zones (%1$d/%2$d)</string>
+  <string name="activity_zone_add_zone">Add Zone</string>
+  <string name="activity_zone_empty_state">No activity zones created yet.\nTap \'Add Zone\' above to define a motion detection area.</string>
+  <string name="activity_zone_vertices_count">%1$d vertices · %2$s</string>
+  <string name="activity_zone_delete_zone">Delete zone</string>
+  <string name="activity_zone_unnamed">Zone %1$d</string>
+  <string name="activity_zone_nav_back">Navigate back to camera</string>
+  <string name="activity_zone_canvas_desc">Camera snapshot canvas</string>
 </resources>
