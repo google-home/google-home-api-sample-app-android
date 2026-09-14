@@ -88,53 +88,85 @@ import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelineUiState
 import com.google.home.google.ChimeTrait
 import com.google.home.google.ZoneManagementTrait
 
+import coil3.ImageLoader
+
+/**
+ * Holds general camera stream settings, chime traits, timeline, and AI perception state.
+ */
+data class CameraStreamOptionsState(
+  val isCameraOn: Boolean = false,
+  val isTalkbackSupported: Boolean = false,
+  val isTalkbackEnabled: Boolean = false,
+  val isAudioRecording: Boolean = false,
+  val isToggleRecordingInProgress: Boolean = false,
+  val isToggleAudioRecordingInProgress: Boolean = false,
+  val isDoorbell: Boolean = false,
+  val isChimeToggleSupported: Boolean = false,
+  val isChimeEnabled: Boolean = false,
+  val chimeType: ChimeTrait.ExternalChimeType = ChimeTrait.ExternalChimeType.Electronic,
+  val cameraTimelineUiState: CameraTimelineUiState? = null,
+  val recordingModeOptions: List<RecordingModeOption> = emptyList(),
+  val selectedRecordingModeIndex: Int? = null,
+  val videoAnalysisControllers: List<VideoAnalysisController> = emptyList(),
+  val isToggleAiFeaturesInProgress: Boolean = false,
+)
+
+/**
+ * Holds Activity Zone canvas, snapshot URLs, and zone list state for the stream view.
+ */
+data class ActivityZoneStreamState(
+  val activityZones: List<ActivityZone> = emptyList(),
+  val twoDCartesianMax: ZoneManagementTrait.TwoDCartesianVertexStruct? = null,
+  val zoneUpdateStatus: ZoneUpdateStatus = ZoneUpdateStatus.Idle,
+  val snapshotUrl: String? = null,
+  val authenticatedImageLoader: ImageLoader? = null,
+  val isFetchingLiveSnapshot: Boolean = false,
+)
+
+/**
+ * Encapsulates all action callbacks for stream controls and activity zone operations.
+ */
+data class CameraStreamActions(
+  val onSetRecordingMode: (Int) -> Unit = {},
+  val onRefreshLiveSnapshot: () -> Unit = {},
+  val onAddActivityZone: () -> Unit = {},
+  val onDeleteActivityZone: (Int) -> Unit = {},
+  val onNavigateToActivityZone: () -> Unit = {},
+  val onNavigateToFamiliarFace: () -> Unit = {},
+  val onSetAiFeaturesEnabled: (VideoAnalysisController, Boolean) -> Unit = { _, _ -> },
+  val onTurnCameraOn: (Boolean) -> Unit = {},
+  val onSetTalkback: (Boolean) -> Unit = {},
+  val onSetAudioRecording: (Boolean) -> Unit = {},
+  val onToggleChime: () -> Unit = {},
+  val onSetChimeType: (ChimeTrait.ExternalChimeType) -> Unit = {},
+  val onRetry: () -> Unit = {},
+  val onSurfaceCreated: (Surface) -> Unit = {},
+  val onSurfaceDestroyed: () -> Unit = {},
+  val onShowSnackbar: (String) -> Unit = {},
+)
+
+/**
+ * Primary stream screen composable accepting structured state holder and action callback objects.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CameraStreamView(
   playerState: CameraStreamState,
+  optionsState: CameraStreamOptionsState = CameraStreamOptionsState(),
+  activityZoneState: ActivityZoneStreamState = ActivityZoneStreamState(),
+  actions: CameraStreamActions = CameraStreamActions(),
   paddingValues: PaddingValues = PaddingValues(),
-  isCameraOn: Boolean = false,
-  isTalkbackSupported: Boolean = false,
-  isTalkbackEnabled: Boolean = false,
-  isAudioRecording: Boolean = false,
-  isToggleRecordingInProgress: Boolean = false,
-  isToggleAudioRecordingInProgress: Boolean = false,
-  isDoorbell: Boolean = false,
-  isChimeToggleSupported: Boolean = false,
-  isChimeEnabled: Boolean = false,
-  chimeType: ChimeTrait.ExternalChimeType = ChimeTrait.ExternalChimeType.Electronic,
-  cameraTimelineUiState: CameraTimelineUiState? = null,
-  recordingModeOptions: List<RecordingModeOption> = emptyList(),
-  selectedRecordingModeIndex: Int? = null,
-  onSetRecordingMode: (Int) -> Unit = {},
-  activityZones: List<ActivityZone> = emptyList(),
-  twoDCartesianMax: ZoneManagementTrait.TwoDCartesianVertexStruct? = null,
-  zoneUpdateStatus: ZoneUpdateStatus = ZoneUpdateStatus.Idle,
-  onAddActivityZone: () -> Unit = {},
-  onDeleteActivityZone: (Int) -> Unit = {},
-  onNavigateToFamiliarFace: () -> Unit = {},
-  videoAnalysisControllers: List<VideoAnalysisController> = emptyList(),
-  isToggleAiFeaturesInProgress: Boolean = false,
-  onSetAiFeaturesEnabled: (VideoAnalysisController, Boolean) -> Unit = { _, _ -> },
-  onTurnCameraOn: (Boolean) -> Unit = {},
-  onSetTalkback: (Boolean) -> Unit = {},
-  onSetAudioRecording: (Boolean) -> Unit = {},
-  onToggleChime: () -> Unit = {},
-  onSetChimeType: (ChimeTrait.ExternalChimeType) -> Unit = {},
-  onRetry: () -> Unit = {},
-  onSurfaceCreated: (Surface) -> Unit = {},
-  onSurfaceDestroyed: () -> Unit = {},
-  onShowSnackbar: (String) -> Unit = {},
+  modifier: Modifier = Modifier,
 ) {
-  val canToggleAudio by remember(isCameraOn, isToggleAudioRecordingInProgress) {
-    derivedStateOf { isCameraOn && !isToggleAudioRecordingInProgress }
+  val canToggleAudio by remember(optionsState.isCameraOn, optionsState.isToggleAudioRecordingInProgress) {
+    derivedStateOf { optionsState.isCameraOn && !optionsState.isToggleAudioRecordingInProgress }
   }
 
   val sheetState = rememberModalBottomSheetState()
   var showBottomSheet by rememberSaveable { mutableStateOf(false) }
 
   val isCurrentlyStreaming = (playerState == CameraStreamState.STREAMING_WITH_TALKBACK ||
-          playerState == CameraStreamState.STREAMING_WITHOUT_TALKBACK) && !isToggleRecordingInProgress
+          playerState == CameraStreamState.STREAMING_WITHOUT_TALKBACK) && !optionsState.isToggleRecordingInProgress
 
   // Permission Logic
   var microphonePermissionGranted by rememberSaveable { mutableStateOf(false) }
@@ -143,7 +175,7 @@ fun CameraStreamView(
     onResult = { isGranted ->
       microphonePermissionGranted = isGranted
       if (!isGranted) {
-        onShowSnackbar("Microphone permission denied. Talkback will not be available.")
+        actions.onShowSnackbar("Microphone permission denied. Talkback will not be available.")
       }
     }
   )
@@ -158,7 +190,7 @@ fun CameraStreamView(
   }
 
   Scaffold(
-    modifier = Modifier.padding(paddingValues).fillMaxSize().testTag("CameraStreamScreen"),
+    modifier = modifier.padding(paddingValues).fillMaxSize().testTag("CameraStreamScreen"),
     containerColor = Color.Black
   ) { _ ->
     Column(modifier = Modifier.fillMaxSize()) {
@@ -172,7 +204,7 @@ fun CameraStreamView(
           modifier = Modifier
             .fillMaxWidth()
             .run {
-              if (cameraTimelineUiState != null) {
+              if (optionsState.cameraTimelineUiState != null) {
                 // When timeline is present, cap video at 50% of screen height
                 heightIn(max = screenMaxHeight * 0.5f)
               } else {
@@ -184,35 +216,35 @@ fun CameraStreamView(
         ) {
           PunchThroughSurface(
             isVisible = isCurrentlyStreaming,
-            onSurfaceCreated = onSurfaceCreated,
-            onSurfaceDestroyed = onSurfaceDestroyed,
+            onSurfaceCreated = actions.onSurfaceCreated,
+            onSurfaceDestroyed = actions.onSurfaceDestroyed,
             modifier = Modifier.fillMaxSize()
           )
-          LiveStreamOverlay(playerState, isCurrentlyStreaming, onRetry)
+          LiveStreamOverlay(playerState, isCurrentlyStreaming, actions.onRetry)
         }
       }
-      if (cameraTimelineUiState != null) {
+      if (optionsState.cameraTimelineUiState != null) {
         CameraTimeline(
-          uiState = cameraTimelineUiState,
+          uiState = optionsState.cameraTimelineUiState,
           modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
         )
       }
 
-      if (isTalkbackSupported && isCurrentlyStreaming) {
+      if (optionsState.isTalkbackSupported && isCurrentlyStreaming) {
         Spacer(modifier = Modifier.height(16.dp))
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.Center
         ) {
           MicrophoneOverlay(
-            isEnabled = isTalkbackEnabled,
+            isEnabled = optionsState.isTalkbackEnabled,
             onToggle = { requestedEnabled ->
               if (requestedEnabled && permissionsManager?.hasMicrophonePermission() != true) {
                 permissionsManager?.requestMicrophonePermission()
               } else {
-                onSetTalkback(requestedEnabled)
+                actions.onSetTalkback(requestedEnabled)
               }
             }
           )
@@ -223,7 +255,7 @@ fun CameraStreamView(
         modifier = Modifier
           .fillMaxWidth()
           .run {
-            if (cameraTimelineUiState == null) {
+            if (optionsState.cameraTimelineUiState == null) {
               // When no timeline, give FAB its own weighted space
               weight(1f).padding(26.dp)
             } else {
@@ -246,27 +278,55 @@ fun CameraStreamView(
         // --- CAMERA POWER ---
         ListItem(
           headlineContent = { Text("Camera Power") },
-          supportingContent = { Text(if (isCameraOn) "On" else "Off") },
+          supportingContent = { Text(if (optionsState.isCameraOn) "On" else "Off") },
           trailingContent = {
-            if (isToggleRecordingInProgress) {
-              CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
-              Switch(checked = isCameraOn, onCheckedChange = onTurnCameraOn)
-            }
-          }
+            Switch(
+              checked = optionsState.isCameraOn,
+              onCheckedChange = null,
+              enabled = !optionsState.isToggleRecordingInProgress,
+              thumbContent = if (optionsState.isToggleRecordingInProgress) {
+                {
+                  CircularProgressIndicator(
+                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                    strokeWidth = 2.dp
+                  )
+                }
+              } else null
+            )
+          },
+          modifier = Modifier.toggleable(
+            value = optionsState.isCameraOn,
+            enabled = !optionsState.isToggleRecordingInProgress,
+            role = Role.Switch,
+            onValueChange = actions.onTurnCameraOn
+          )
         )
 
         // --- AUDIO RECORDING ---
         ListItem(
           headlineContent = { Text("Audio Recording") },
-          supportingContent = { Text(if (isAudioRecording) "Saving audio" else "Not saving") },
+          supportingContent = { Text(if (optionsState.isAudioRecording) "Saving audio" else "Not saving") },
           trailingContent = {
-            if (isToggleAudioRecordingInProgress) {
-              CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
-              Switch(checked = isAudioRecording, onCheckedChange = onSetAudioRecording, enabled = canToggleAudio)
-            }
-          }
+            Switch(
+              checked = optionsState.isAudioRecording,
+              onCheckedChange = null,
+              enabled = canToggleAudio && !optionsState.isToggleAudioRecordingInProgress,
+              thumbContent = if (optionsState.isToggleAudioRecordingInProgress) {
+                {
+                  CircularProgressIndicator(
+                    modifier = Modifier.size(SwitchDefaults.IconSize),
+                    strokeWidth = 2.dp
+                  )
+                }
+              } else null
+            )
+          },
+          modifier = Modifier.toggleable(
+            value = optionsState.isAudioRecording,
+            enabled = canToggleAudio && !optionsState.isToggleAudioRecordingInProgress,
+            role = Role.Switch,
+            onValueChange = actions.onSetAudioRecording
+          )
         )
 
         // --- FAMILIAR FACE ---
@@ -282,7 +342,7 @@ fun CameraStreamView(
             // Dismiss the bottom sheet before navigating
             showBottomSheet = false
             // Trigger the navigation callback
-            onNavigateToFamiliarFace()
+            actions.onNavigateToFamiliarFace()
             }
         )
 
@@ -295,8 +355,8 @@ fun CameraStreamView(
           modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        val availableModes = recordingModeOptions.filter { it.available }
-        val currentMode = recordingModeOptions.firstOrNull { it.index == selectedRecordingModeIndex }
+        val availableModes = optionsState.recordingModeOptions.filter { it.available }
+        val currentMode = optionsState.recordingModeOptions.firstOrNull { it.index == optionsState.selectedRecordingModeIndex }
         var showRecordingModeMenu by rememberSaveable { mutableStateOf(false) }
 
         ListItem(
@@ -318,7 +378,7 @@ fun CameraStreamView(
                   DropdownMenuItem(
                     text = { Text(option.readableString) },
                     onClick = {
-                      onSetRecordingMode(option.index)
+                      actions.onSetRecordingMode(option.index)
                       showRecordingModeMenu = false
                     }
                   )
@@ -329,6 +389,7 @@ fun CameraStreamView(
         )
 
         // --- ACTIVITY ZONES ---
+        // Section header and controls for viewing, editing, and adding Activity Zones via bottom sheet
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
         Text(
           "Activity Zones",
@@ -337,53 +398,25 @@ fun CameraStreamView(
           modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        val modifiableZones = activityZones.filter { it.modifiable }
+        val modifiableZones = activityZoneState.activityZones.filter { it.modifiable }
 
-        if (modifiableZones.isEmpty()) {
-          ListItem(
-            headlineContent = { Text("No zones configured") },
-            supportingContent = { Text("Add a zone to filter events by area") }
-          )
-        } else {
-          modifiableZones.forEach { zone ->
-            ListItem(
-              headlineContent = { Text(zone.zoneName.ifBlank { "Zone ${zone.zoneId}" }) },
-              supportingContent = { Text("${zone.vertices.size} vertices · ${zone.color.displayName}") },
-              leadingContent = {
-                Box(
-                  modifier = Modifier
-                    .size(16.dp)
-                    .background(
-                      color = try {
-                        Color(android.graphics.Color.parseColor(zone.color.hexString))
-                      } catch (e: Exception) {
-                        Color.Gray
-                      },
-                      shape = CircleShape
-                    )
-                )
-              },
-              trailingContent = {
-                if (zoneUpdateStatus == ZoneUpdateStatus.InProgress) {
-                  CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                  IconButton(onClick = { zone.zoneId?.let { onDeleteActivityZone(it) } }) {
-                    Icon(
-                      Icons.Default.Delete,
-                      contentDescription = "Delete zone",
-                      tint = MaterialTheme.colorScheme.error
-                    )
-                  }
-                }
-              }
-            )
+        // ListItem option for navigating to the full Activity Zone canvas setup screen
+        ListItem(
+          headlineContent = { Text("Configure Activity Zones") },
+          supportingContent = { Text("${modifiableZones.size} zones configured · Edit on camera snapshot canvas") },
+          trailingContent = {
+            Icon(Icons.Default.ChevronRight, contentDescription = "Open Activity Zone Configuration")
+          },
+          modifier = Modifier.clickable {
+            showBottomSheet = false
+            actions.onNavigateToActivityZone()
           }
-        }
+        )
 
-        // Limit of MAX_ACTIVITY_ZONES activity zones
         val canAddZone = modifiableZones.size < MAX_ACTIVITY_ZONES &&
-                zoneUpdateStatus != ZoneUpdateStatus.InProgress
+                activityZoneState.zoneUpdateStatus != ZoneUpdateStatus.InProgress
 
+        // ListItem option for directly adding a new Activity Zone
         ListItem(
           headlineContent = {
             Text(
@@ -394,7 +427,11 @@ fun CameraStreamView(
           supportingContent = if (modifiableZones.size >= MAX_ACTIVITY_ZONES) {
             { Text("Four zones max.", color = MaterialTheme.colorScheme.error) }
           } else null,
-          modifier = Modifier.clickable(enabled = canAddZone) { onAddActivityZone() },
+          modifier = Modifier.clickable(enabled = canAddZone) {
+            showBottomSheet = false
+            actions.onAddActivityZone()
+            actions.onNavigateToActivityZone()
+          },
           leadingContent = {
             Icon(
               Icons.Default.Add,
@@ -405,7 +442,7 @@ fun CameraStreamView(
         )
 
         // --- GEMINI AI FEATURES ---
-        if (videoAnalysisControllers.isNotEmpty()) {
+        if (optionsState.videoAnalysisControllers.isNotEmpty()) {
           // Visual divider for camera AI Perception settings section
           HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
           Text(
@@ -415,10 +452,10 @@ fun CameraStreamView(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
           )
 
-          videoAnalysisControllers.forEach { controller ->
+          optionsState.videoAnalysisControllers.forEach { controller ->
             val isAiFeaturesSupported by controller.isAiFeaturesSupported.collectAsState(false)
             val isAiFeaturesEnabled by controller.isAiFeaturesEnabled.collectAsState(false)
-            val isToggleInteractive = isAiFeaturesSupported && !isToggleAiFeaturesInProgress
+            val isToggleInteractive = isAiFeaturesSupported && !optionsState.isToggleAiFeaturesInProgress
 
             // ListItem control for toggling Gemini AI features for this endpoint
             ListItem(
@@ -446,7 +483,7 @@ fun CameraStreamView(
                   checked = isAiFeaturesEnabled,
                   onCheckedChange = null,
                   enabled = isToggleInteractive,
-                  thumbContent = if (isToggleAiFeaturesInProgress) {
+                  thumbContent = if (optionsState.isToggleAiFeaturesInProgress) {
                     {
                       CircularProgressIndicator(
                         modifier = Modifier.size(SwitchDefaults.IconSize),
@@ -460,14 +497,14 @@ fun CameraStreamView(
                 value = isAiFeaturesEnabled,
                 enabled = isToggleInteractive,
                 role = Role.Switch,
-                onValueChange = { enabled -> onSetAiFeaturesEnabled(controller, enabled) }
+                onValueChange = { enabled -> actions.onSetAiFeaturesEnabled(controller, enabled) }
               )
             )
           }
         }
 
         // --- DOORBELL CHIME ---
-        if (isDoorbell) {
+        if (optionsState.isDoorbell) {
           HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
           Text(
             "Indoor Chime Settings",
@@ -480,13 +517,13 @@ fun CameraStreamView(
             headlineContent = {
               Text(
                 text = "Indoor Chime Toggle (Software)",
-                color = if (isChimeToggleSupported) Color.Unspecified else MaterialTheme.colorScheme.outline
+                color = if (optionsState.isChimeToggleSupported) Color.Unspecified else MaterialTheme.colorScheme.outline
               )
             },
             supportingContent = {
               Text(
-                if (isChimeToggleSupported) {
-                  if (isChimeEnabled) "On" else "Off"
+                if (optionsState.isChimeToggleSupported) {
+                  if (optionsState.isChimeEnabled) "On" else "Off"
                 } else {
                   "Not supported by this hardware"
                 }
@@ -494,12 +531,12 @@ fun CameraStreamView(
             },
             trailingContent = {
               Switch(
-                checked = isChimeEnabled,
-                onCheckedChange = { onToggleChime() },
-                enabled = isChimeToggleSupported
+                checked = optionsState.isChimeEnabled,
+                onCheckedChange = { actions.onToggleChime() },
+                enabled = optionsState.isChimeToggleSupported
               )
             },
-            modifier = Modifier.clickable(enabled = isChimeToggleSupported) { onToggleChime() }
+            modifier = Modifier.clickable(enabled = optionsState.isChimeToggleSupported) { actions.onToggleChime() }
           )
 
           var showTypeMenu by rememberSaveable { mutableStateOf(false) }
@@ -507,7 +544,7 @@ fun CameraStreamView(
           ListItem(
             headlineContent = { Text("Physical Chime Type") },
             supportingContent = {
-              val label = when (chimeType) {
+              val label = when (optionsState.chimeType) {
                 ChimeTrait.ExternalChimeType.None -> "None (Chime Disabled)"
                 ChimeTrait.ExternalChimeType.Mechanical -> "Mechanical"
                 ChimeTrait.ExternalChimeType.Electronic -> "Electronic"
@@ -527,21 +564,21 @@ fun CameraStreamView(
                   DropdownMenuItem(
                     text = { Text("None (Disabled)") },
                     onClick = {
-                      onSetChimeType(ChimeTrait.ExternalChimeType.None)
+                      actions.onSetChimeType(ChimeTrait.ExternalChimeType.None)
                       showTypeMenu = false
                     }
                   )
                   DropdownMenuItem(
                     text = { Text("Mechanical") },
                     onClick = {
-                      onSetChimeType(ChimeTrait.ExternalChimeType.Mechanical)
+                      actions.onSetChimeType(ChimeTrait.ExternalChimeType.Mechanical)
                       showTypeMenu = false
                     }
                   )
                   DropdownMenuItem(
                     text = { Text("Electronic") },
                     onClick = {
-                      onSetChimeType(ChimeTrait.ExternalChimeType.Electronic)
+                      actions.onSetChimeType(ChimeTrait.ExternalChimeType.Electronic)
                       showTypeMenu = false
                     }
                   )

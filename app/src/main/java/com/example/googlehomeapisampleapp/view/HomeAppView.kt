@@ -206,16 +206,11 @@ fun HomeAppView(homeAppVM: HomeAppViewModel) {
       val showOtaScreen by homeAppVM.showOtaScreen.collectAsStateWithLifecycle()
 
       if (showOtaScreen) {
-        val otaUiState by remember(selectedDeviceVM) {
-          selectedDeviceVM?.otaUiState ?: flowOf(OtaUiState.Loading)
-        }.collectAsStateWithLifecycle(OtaUiState.Loading)
-
-        val deviceName by remember(selectedDeviceVM) {
-          selectedDeviceVM?.name ?: flowOf("Camera")
-        }.collectAsStateWithLifecycle("Camera")
+        val otaUiState by homeAppVM.otaUiState.collectAsStateWithLifecycle()
+        val otaDeviceName by homeAppVM.otaDeviceName.collectAsStateWithLifecycle()
 
         OtaUpdateScreen(
-          deviceName = deviceName,
+          deviceName = otaDeviceName,
           otaUiState = otaUiState,
           onComplete = { homeAppVM.closeOtaScreen() },
           paddingValues = PaddingValues(),

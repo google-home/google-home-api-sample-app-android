@@ -19,10 +19,12 @@ import android.util.Log
 import com.google.home.ConnectivityState
 import com.google.home.HomeDevice
 import com.google.home.HomeException
+import com.google.home.google.CameraSnapshot
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDoorbellDevice
 import com.google.home.google.ZoneManagement
 import com.google.home.google.ZoneManagementTrait
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -47,6 +49,17 @@ interface ActivityZoneController {
      * Required for scaling zone vertices correctly.
      */
     val twoDCartesianMax: Flow<ZoneManagementTrait.TwoDCartesianVertexStruct?>
+
+    /**
+     * Emits the URL of the cached camera preview snapshot image, if available.
+     */
+    val previewImageUrl: Flow<String?>
+
+    /**
+     * Triggers an on-demand live snapshot command on the camera and returns the fresh snapshot URL.
+     * Returns null if the command fails, times out, or the device/trait is unavailable.
+     */
+    suspend fun fetchLiveSnapshotUrl(): String?
 
     /**
      * Creates a new activity zone on the device.
@@ -114,6 +127,45 @@ class ActivityZoneControllerImpl(private val device: HomeDevice) : ActivityZoneC
                 .distinctUntilChanged()
         }
 
+    /**
+     * Flow of the camera preview image URL, or null if unsupported.
+     */
+    override val previewImageUrl: Flow<String?> =
+        if (deviceType == null) {
+            flowOf(null)
+        } else {
+            device.type(deviceType)
+                .transform { type ->
+                    val trait = type.trait(CameraSnapshot)
+                    emit(trait?.preview_image_url)
+                }
+                .distinctUntilChanged()
+        }
+
+    /**
+     * Fetches an on-demand live snapshot URL from the [CameraSnapshot] trait if the device is online.
+     */
+    override suspend fun fetchLiveSnapshotUrl(): String? {
+        val resolvedType = deviceType ?: return null
+        return try {
+            withTimeout(TIMEOUT_MS) {
+                val trait = getOnlineTrait(resolvedType, CameraSnapshot) ?: return@withTimeout null
+                val response = trait.getLiveSnapshot()
+                response.snapshot_url
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "fetchLiveSnapshotUrl: Timed out after ${TIMEOUT_MS}ms")
+            null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "fetchLiveSnapshotUrl: Failed to fetch live snapshot — ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Adds an activity zone to the device via [ZoneManagement.createTwoDCartesianZone].
+     */
     override suspend fun addZone(zone: ActivityZone): ZoneUpdateStatus {
         val resolvedType = deviceType ?: return ZoneUpdateStatus.Failure(
             "Cannot add zone — unsupported device type for ${device.id}"
@@ -123,7 +175,7 @@ class ActivityZoneControllerImpl(private val device: HomeDevice) : ActivityZoneC
         return try {
             withTimeout(TIMEOUT_MS) {
                 Log.d(TAG, "addZone: Getting online trait...")
-                val trait = getOnlineTrait(resolvedType)
+                val trait = getOnlineTrait(resolvedType, ZoneManagement)
                 if (trait == null) {
                     Log.e(TAG, "addZone: Trait is null or device offline!")
                     return@withTimeout ZoneUpdateStatus.Failure(
@@ -142,18 +194,22 @@ class ActivityZoneControllerImpl(private val device: HomeDevice) : ActivityZoneC
             Log.e(TAG, "addZone: Timed out after ${TIMEOUT_MS}ms")
             ZoneUpdateStatus.Failure("Timeout creating zone.")
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e(TAG, "addZone: Unexpected error — ${e.message}", e)
             ZoneUpdateStatus.Failure("Unexpected error: ${e.message}")
         }
     }
 
+    /**
+     * Deletes an activity zone by ID via [ZoneManagement.removeZone].
+     */
     override suspend fun deleteZone(zoneId: Int): ZoneUpdateStatus {
         val resolvedType = deviceType ?: return ZoneUpdateStatus.Failure(
             "Cannot delete zone — unsupported device type for ${device.id}"
         )
         return try {
             withTimeout(TIMEOUT_MS) {
-                val trait = getOnlineTrait(resolvedType)
+                val trait = getOnlineTrait(resolvedType, ZoneManagement)
                     ?: return@withTimeout ZoneUpdateStatus.Failure(
                         "ZoneManagement trait not available or device offline."
                     )
@@ -166,27 +222,32 @@ class ActivityZoneControllerImpl(private val device: HomeDevice) : ActivityZoneC
         } catch (e: TimeoutCancellationException) {
             Log.e(TAG, "Timeout deleting activity zone $zoneId on device ${device.id}")
             ZoneUpdateStatus.Failure("Timeout deleting zone.")
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Failed to delete activity zone $zoneId — ${e.message}", e)
+            ZoneUpdateStatus.Failure("Unexpected error: ${e.message}")
         }
     }
 
     /**
-     * Returns the [ZoneManagement] trait only when the device is online,
-     * or null if unavailable.
+     * Generic helper that returns trait [T] only when the device connectivity state is [ConnectivityState.ONLINE].
      */
-    private suspend fun getOnlineTrait(
-        resolvedDeviceType: com.google.home.DeviceTypeFactory<*>
-    ): ZoneManagement? {
+    private suspend fun <T : com.google.home.Trait> getOnlineTrait(
+        resolvedDeviceType: com.google.home.DeviceTypeFactory<*>,
+        traitFactory: com.google.home.TraitFactory<T>
+    ): T? {
         return try {
             Log.d(TAG, "getOnlineTrait: Waiting for online trait...")
             val result = device.type(resolvedDeviceType).first { type ->
-                val trait = type.trait(ZoneManagement)
+                val trait = type.trait(traitFactory)
                 val isOnline = trait?.metadata?.sourceConnectivity?.connectivityState == ConnectivityState.ONLINE
                 Log.d(TAG, "getOnlineTrait: trait=$trait, isOnline=$isOnline")
                 isOnline
-            }.trait(ZoneManagement)
+            }.trait(traitFactory)
             Log.d(TAG, "getOnlineTrait: Got trait = $result")
             result
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e(TAG, "getOnlineTrait: Failed — ${e.message}", e)
             null
         }

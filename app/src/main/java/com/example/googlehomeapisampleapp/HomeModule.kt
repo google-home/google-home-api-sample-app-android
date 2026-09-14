@@ -28,8 +28,10 @@ import com.google.home.google.UserPresenceSettings
 import com.google.home.google.Assistant
 import com.google.home.google.AssistantBroadcast
 import com.google.home.google.AssistantFulfillment
+import com.google.home.google.AvStreamAnalysis
 import com.google.home.google.CameraAvStreamManagement
 import com.google.home.google.CameraHistory
+import com.google.home.google.CameraSnapshot
 import com.google.home.google.Chime
 import com.google.home.google.ChimeThemes
 import com.google.home.google.ExtendedApplicationLauncher
@@ -37,6 +39,7 @@ import com.google.home.google.ExtendedBasicInformation
 import com.google.home.google.ExtendedLevelControl
 import com.google.home.google.ExtendedMediaInput
 import com.google.home.google.ExtendedMediaPlayback
+import com.google.home.google.FaceLibrary
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDisplayDevice
 import com.google.home.google.GoogleDoorbellDevice
@@ -55,6 +58,7 @@ import com.google.home.google.ZoneManagement
 import com.google.home.matter.standard.AudioOutput
 import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.BooleanState
+import com.google.home.matter.standard.ChimeDevice
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.ContactSensorDevice
 import com.google.home.matter.standard.DimmableLightDevice
@@ -118,6 +122,7 @@ object HomeModule {
 @Singleton
 fun provideSupportedDeviceTypes(): @JvmSuppressWildcards List<DeviceTypeFactory<out DeviceType>> =
 listOf(
+    ChimeDevice,
     ColorTemperatureLightDevice,
     ContactSensorDevice,
     DimmableLightDevice,
@@ -156,10 +161,12 @@ listOf(
       AssistantBroadcast,
       AssistantFulfillment,
       AudioOutput,
+      AvStreamAnalysis,
       BasicInformation,
       BooleanState,
       CameraAvStreamManagement,
       CameraHistory,
+      CameraSnapshot,
       Chime,
       ChimeThemes,
       DoorLock,
@@ -168,6 +175,7 @@ listOf(
       ExtendedLevelControl,
       ExtendedMediaInput,
       ExtendedMediaPlayback,
+      FaceLibrary,
       FanControl,
       IlluminanceMeasurement,
       LevelControl,

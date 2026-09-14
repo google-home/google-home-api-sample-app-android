@@ -40,14 +40,17 @@ import androidx.compose.material.icons.outlined.MotionPhotosOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +73,19 @@ import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Thermostat
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
+import com.google.home.google.GoogleCameraDevice
+import com.google.home.google.GoogleDoorbellDevice
+import com.google.home.matter.standard.DoorLockDevice
+import com.google.home.matter.standard.ThermostatDevice
+import kotlinx.coroutines.launch
+
 private const val TAG = "HistoryView"
 
 @Composable
@@ -79,46 +95,100 @@ fun HistoryView(
 ) {
     val historyItems = viewModel.historyFlow.collectAsLazyPagingItems()
     val selectedDevice by viewModel.selectedHistoryDeviceVM.collectAsStateWithLifecycle()
+    val selectedDeviceName by remember(selectedDevice) {
+        selectedDevice?.name ?: kotlinx.coroutines.flow.flowOf("")
+    }.collectAsStateWithLifecycle(initialValue = "")
+    val primaryDeviceType by remember(selectedDevice) {
+        selectedDevice?.type ?: kotlinx.coroutines.flow.flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
     val homeBriefs by viewModel.homeBriefs.collectAsStateWithLifecycle()
+    val selectedFilter by viewModel.selectedDeviceTypeFilter.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
-    // Fetch HomeBriefs every time the History screen is opened
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        viewModel.loadHomeBriefs()
+    // Only fetch HomeBriefs when viewing Structure-Wide History (selectedDevice == null)
+    androidx.compose.runtime.LaunchedEffect(selectedDevice == null) {
+        if (selectedDevice == null) {
+            viewModel.loadHomeBriefs()
+        }
     }
 
-    BackHandler(enabled = true) {
+    BackHandler(enabled = selectedDevice != null) {
         viewModel.clearHistorySelection()
     }
 
     val imageLoader = historyPlayerViewModel.cameraMediaAuth.imageLoader
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
-        Column {
-            if (selectedDevice != null) {
-                Row(
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val headerTitle = if (selectedDevice != null) {
+                    (selectedDeviceName.takeIf { it.isNotBlank() } ?: "Unknown Device") + ": History"
+                } else {
+                    "Home Activity"
+                }
+                Text(
+                    text = headerTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.Black,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Device Type Filter Chips (Only shown on Structure-Wide History)
+            if (selectedDevice == null) {
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        text = (selectedDevice?.name?.collectAsStateWithLifecycle()?.value
-                            ?.takeIf { it.isNotBlank() } ?: "Unknown Device") + ": History",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.Black,
-                        modifier = Modifier.weight(1f)
-                    )
+                    items(HistoryDeviceTypeFilter.entries) { filter ->
+                        FilterChip(
+                            selected = selectedFilter == filter,
+                            onClick = { viewModel.selectDeviceTypeFilter(filter) },
+                            label = { Text(filter.label) },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
                 }
             }
 
-            // Event list
-            HistoryList(
-                events = historyItems,
-                homeBriefs = homeBriefs,
-                imageLoader = imageLoader,
-                onEventSelected = { event -> viewModel.openVideoPlayer(event) },
-                onHomeBriefEventClick = { event -> viewModel.openHomeBriefVideo(event) },
-            )
+            // Event list (HomeBriefs only included on Structure-Wide History when All filter is selected)
+            Box(modifier = Modifier.weight(1f)) {
+                val shouldShowHomeBriefs = selectedDevice == null &&
+                    selectedFilter == HistoryDeviceTypeFilter.All
+                val emptyIcon = when {
+                    selectedDevice != null -> {
+                        when (primaryDeviceType?.factory) {
+                            DoorLockDevice -> Icons.Outlined.Lock
+                            ThermostatDevice -> Icons.Outlined.Thermostat
+                            GoogleCameraDevice, GoogleDoorbellDevice -> Icons.Outlined.Videocam
+                            else -> Icons.Outlined.History
+                        }
+                    }
+                    selectedFilter == HistoryDeviceTypeFilter.DoorLock -> Icons.Outlined.Lock
+                    selectedFilter == HistoryDeviceTypeFilter.Thermostat -> Icons.Outlined.Thermostat
+                    selectedFilter == HistoryDeviceTypeFilter.Camera -> Icons.Outlined.Videocam
+                    else -> Icons.Outlined.History
+                }
+                HistoryList(
+                    events = historyItems,
+                    homeBriefs = if (shouldShowHomeBriefs) homeBriefs else emptyList(),
+                    emptyIcon = emptyIcon,
+                    imageLoader = imageLoader,
+                    onEventSelected = { event -> viewModel.openVideoPlayer(event) },
+                    onHomeBriefEventClick = { event -> viewModel.openHomeBriefVideo(event) },
+                )
+            }
+
+            // Bottom Navigation Bar (Only shown on Structure-Wide History)
+            if (selectedDevice == null) {
+                TabbedMenuView(viewModel)
+            }
         }
     }
 }
@@ -127,6 +197,7 @@ fun HistoryView(
 fun HistoryList(
     events: LazyPagingItems<HistoryEventUi>,
     homeBriefs: List<HistoryUiDataModel.HomeBriefEvent> = emptyList(),
+    emptyIcon: ImageVector = Icons.Outlined.History,
     imageLoader: ImageLoader,
     onEventSelected: (HistoryUiDataModel.CameraEvent) -> Unit,
     onHomeBriefEventClick: (HomeBriefCameraEvent) -> Unit = {},
@@ -137,21 +208,55 @@ fun HistoryList(
     val isFinishedLoading = events.loadState.refresh is LoadState.NotLoading
     val isEmpty = events.itemCount == 0 && homeBriefs.isEmpty()
 
-    if (isFinishedLoading && isEmpty) {
+    if (events.loadState.refresh is LoadState.Loading && isEmpty) {
         Box(
             modifier = Modifier.fillMaxSize().background(Color.White),
             contentAlignment = Alignment.Center
         ) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
+    } else if (events.loadState.refresh is LoadState.Error && isEmpty) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
-                    imageVector = Icons.Outlined.Videocam,
+                    imageVector = Icons.Outlined.History,
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
                     tint = Color.LightGray
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "No camera events",
+                    text = "Failed to load history",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.Black
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { events.retry() }) {
+                    Text("Retry")
+                }
+            }
+        }
+    } else if (isFinishedLoading && isEmpty) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = emptyIcon,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = Color.LightGray
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "No events",
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color.Black
                 )
@@ -174,25 +279,19 @@ fun HistoryList(
                 ) { brief ->
                     HomeBriefCard(
                         brief = brief,
+                        imageLoader = imageLoader,
                         onEventClick = { event -> onHomeBriefEventClick(event) },
                     )
                 }
             }
 
-            // Camera / device history items
+            // Paginated chronological history events (Cameras, Locks, Thermostats, etc.)
             items(
                 count = events.itemCount,
                 key = events.itemKey { it.id }
             ) { index ->
                 when (val item = events[index]) {
                     is HistoryEventUi.DateSeparatorModel -> DateSeparatorRow(item.date, today)
-                    is HistoryUiDataModel.HomeBriefEvent -> {
-                        HomeBriefCard(
-                            brief = item,
-                            onEventClick = { event -> onHomeBriefEventClick(event) },
-                            imageLoader = imageLoader,
-                        )
-                    }
                     is HistoryUiDataModel.CameraEvent -> {
                         HistoryItemRow(
                             uiModel = item,
@@ -201,6 +300,8 @@ fun HistoryList(
                             onClick = { onEventSelected(item) },
                         )
                     }
+                    is HistoryUiDataModel.DoorLockEvent,
+                    is HistoryUiDataModel.StateChangeUiModel,
                     is HistoryUiDataModel.DefaultEvent -> {
                         HistoryItemRow(
                             uiModel = item,
@@ -209,6 +310,7 @@ fun HistoryList(
                             onClick = {},
                         )
                     }
+                    is HistoryUiDataModel.HomeBriefEvent -> {} // Handled separately in pinned cards above
                     null -> {}
                 }
             }
@@ -223,7 +325,7 @@ fun HistoryItemRow(
     imageLoader: ImageLoader,
     onClick: () -> Unit,
 ) {
-    val (title, icon) = getEventMetadata(uiModel)
+    val (title, icon, details) = getEventMetadata(uiModel)
 
     Card(
         modifier = Modifier
@@ -251,6 +353,16 @@ fun HistoryItemRow(
                     color = Color.Gray,
                     style = MaterialTheme.typography.bodySmall
                 )
+                if (details.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    details.forEach { detail ->
+                        Text(
+                            text = "• $detail",
+                            color = Color.DarkGray,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
 
             if (uiModel is HistoryUiDataModel.CameraEvent) {
@@ -273,7 +385,13 @@ fun HistoryItemRow(
     }
 }
 
-private fun getEventMetadata(model: HistoryUiDataModel): Pair<String, ImageVector> {
+private data class HistoryEventMetadata(
+    val title: String,
+    val icon: ImageVector,
+    val details: List<String> = emptyList(),
+)
+
+private fun getEventMetadata(model: HistoryUiDataModel): HistoryEventMetadata {
     return when (model) {
         is HistoryUiDataModel.CameraEvent -> {
             val defaultTitleIcon = when (model.eventType) {
@@ -284,15 +402,31 @@ private fun getEventMetadata(model: HistoryUiDataModel): Pair<String, ImageVecto
                 HistoryUiEventType.Animal -> "Animal" to Icons.Outlined.Pets
                 HistoryUiEventType.Unknown -> "Camera Event" to Icons.Outlined.Videocam
             }
-            // Prioritize shortCaption if available and not blank
+            // Prioritize shortCaption over generic event label
             val title = model.shortCaption?.takeIf { it.isNotBlank() } ?: defaultTitleIcon.first
-            title to defaultTitleIcon.second // Keep the original icon
+            HistoryEventMetadata(title, defaultTitleIcon.second)
+        }
+        is HistoryUiDataModel.DoorLockEvent -> {
+            val icon = if (model.isUnlock) Icons.Outlined.LockOpen else Icons.Outlined.Lock
+            HistoryEventMetadata(model.eventTitle, icon, model.details)
+        }
+        is HistoryUiDataModel.StateChangeUiModel -> {
+            val icon = when (model) {
+                is HistoryUiDataModel.ThermostatStateChange,
+                is HistoryUiDataModel.ExtendedThermostatStateChange -> Icons.Outlined.Thermostat
+                else -> Icons.Outlined.History
+            }
+            HistoryEventMetadata(
+                title = model.eventTitle,
+                icon = icon,
+                details = model.details,
+            )
         }
         is HistoryUiDataModel.DefaultEvent -> {
-            (model.eventName ?: "Activity") to Icons.Outlined.History
+            HistoryEventMetadata(model.eventName ?: "Activity", Icons.Outlined.History)
         }
         is HistoryUiDataModel.HomeBriefEvent -> {
-            "Home Brief" to Icons.Outlined.History
+            HistoryEventMetadata("Home Brief", Icons.Outlined.History)
         }
     }
 }

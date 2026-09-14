@@ -64,9 +64,9 @@ class MainActivity : ComponentActivity() {
     Log.d(TAG, "homeAppVM created")
 
     // Connect commissioning callback to trigger OTA screen
-    homeApp.commissioningManager.onCameraCommissioned = { deviceId ->
-      Log.d(TAG, "Camera commissioned ($deviceId) - showing OTA screen")
-      runOnUiThread { homeAppVM.showOtaScreen(deviceId) }
+    homeApp.commissioningManager.onDeviceCommissioned = { primaryDeviceId, allDeviceIds ->
+      Log.i(TAG, "onDeviceCommissioned callback: primaryDeviceId=$primaryDeviceId, allDeviceIds=$allDeviceIds")
+      runOnUiThread { homeAppVM.showOtaScreen(primaryDeviceId, allDeviceIds) }
     }
     // Call to make the app allocate the entire screen:
     enableEdgeToEdge()

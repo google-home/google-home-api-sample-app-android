@@ -21,8 +21,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFactory
 import com.example.googlehomeapisampleapp.extension.basicinformation.observeBasicInformationUiState
-import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
-import com.example.googlehomeapisampleapp.viewmodel.ota.mapUpdateStateToUiState
 import com.google.home.ConnectivityState
 import com.google.home.DecommissionEligibility
 import com.google.home.DeviceType
@@ -60,8 +58,6 @@ import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.OnOffLightSwitchDevice
 import com.google.home.matter.standard.OnOffPluginUnitDevice
 import com.google.home.matter.standard.OnOffSensorDevice
-import com.google.home.matter.standard.OtaRequestorDevice
-import com.google.home.matter.standard.OtaSoftwareUpdateRequestor
 import com.google.home.matter.standard.RootNodeDevice
 import com.google.home.matter.standard.SpeakerDevice
 import com.google.home.matter.standard.TemperatureMeasurement
@@ -70,22 +66,15 @@ import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatDevice
 import com.google.home.matter.standard.WindowCovering
 import com.google.home.matter.standard.WindowCoveringDevice
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -105,53 +94,6 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
   val typeName: MutableStateFlow<String>
   val status: MutableStateFlow<String>
   val basicInfoUiState: Flow<BasicInformationUiState> = device.observeBasicInformationUiState()
-
-  val otaUiState: StateFlow<OtaUiState> = combine(
-    device.type(OtaRequestorDevice),
-    device.type(RootNodeDevice),
-    basicInfoUiState
-  ) { otaRequestorNode, rootNode, basicInfoState ->
-    val otaTrait = otaRequestorNode?.trait(OtaSoftwareUpdateRequestor)
-      ?: rootNode?.trait(OtaSoftwareUpdateRequestor)
-    val basicInfo = rootNode?.trait(BasicInformation)
-    val versionString = basicInfo?.softwareVersionString
-      ?: (basicInfoState as? BasicInformationUiState.Success)?.softwareVersion
-
-    mapUpdateStateToUiState(
-      updateState = otaTrait?.updateState,
-      progress = otaTrait?.updateStateProgress,
-      versionString = versionString
-    )
-  }
-    .distinctUntilChanged()
-    .onEach { state ->
-      when (state) {
-        is OtaUiState.UpToDate -> {
-          val version = state.currentVersionString
-          if (!version.isNullOrBlank() && loggedDeviceVersions[id] != version) {
-            loggedDeviceVersions[id] = version
-            Log.d("DeviceViewModel", "Device $id software version: $version")
-          }
-        }
-        is OtaUiState.Downloading, is OtaUiState.Installing, is OtaUiState.Deferred, is OtaUiState.Failed, is OtaUiState.Checking -> {
-          Log.d("DeviceViewModel", "Device $id OTA status changed: $state")
-        }
-        OtaUiState.Loading -> {}
-      }
-    }
-    .stateIn(
-      scope = viewModelScope,
-      started = SharingStarted.WhileSubscribed(5000),
-      initialValue = OtaUiState.Loading
-    )
-
-  val isControlEnabled: StateFlow<Boolean> = otaUiState
-    .map { state -> state !is OtaUiState.Downloading && state !is OtaUiState.Installing }
-    .stateIn(
-      scope = viewModelScope,
-      started = SharingStarted.WhileSubscribed(5000),
-      initialValue = true
-    )
 
   private val _uiEventFlow = MutableSharedFlow<UiEvent>()
   val uiEventFlow: SharedFlow<UiEvent> = _uiEventFlow
@@ -347,8 +289,6 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
   }
 
   companion object {
-    private val loggedDeviceVersions = ConcurrentHashMap<String, String>()
-
     // Define the specific VID/PID for your camera
     private const val ONN_CAMERA_VID = 5502
     private const val ONN_CAMERA_PID = 4233

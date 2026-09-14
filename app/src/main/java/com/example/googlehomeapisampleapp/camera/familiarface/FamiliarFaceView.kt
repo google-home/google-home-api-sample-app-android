@@ -57,12 +57,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import coil3.imageLoader
 import com.google.home.google.FaceLibraryTrait
 
 /**
@@ -178,6 +181,7 @@ fun FaceLibraryDashboard(
             FaceGrid(faces = library.unlabeledFaces) { face ->
                 UnlabeledFaceItem(
                     face = face,
+                    imageLoader = viewModel.authenticatedImageLoader,
                     onIKnowThem = { faceToName = face },
                     onIDontKnow = {
                         face.id?.let { viewModel.labelFace(FaceId(it) , FaceLibraryTrait.FaceCategory.FaceCategoryUnknown, null) }
@@ -198,7 +202,10 @@ fun FaceLibraryDashboard(
         SectionHeader(title = "Known Faces")
         if (library.knownFaces.isNotEmpty()) {
             FaceGrid(faces = library.knownFaces) { face ->
-                FaceItemCard(face = face) {
+                FaceItemCard(
+                    face = face,
+                    imageLoader = viewModel.authenticatedImageLoader,
+                ) {
                     // Open the detailed ModalBottomSheet for the known face
                     selectedKnownFace = face
                 }
@@ -310,6 +317,7 @@ fun FaceLibraryDashboard(
     selectedKnownFace?.let { face ->
         KnownFaceDetailsSheet(
             face = face,
+            imageLoader = viewModel.authenticatedImageLoader,
             onDismiss = { selectedKnownFace = null },
             onUpdateName = { newName ->
                 face.id?.let { viewModel.labelFace(FaceId(it), FaceLibraryTrait.FaceCategory.FaceCategoryKnown, newName) }
@@ -321,6 +329,7 @@ fun FaceLibraryDashboard(
     if (showNotAPersonSheet) {
         NotAPersonSheet(
             faces = library.notAPersonFaces,
+            imageLoader = viewModel.authenticatedImageLoader,
             onDismiss = { showNotAPersonSheet = false },
             onRevertToUnlabeled = { face ->
                 face.id?.let { viewModel.labelFace(FaceId(it), FaceLibraryTrait.FaceCategory.FaceCategoryUnlabeled, null) }
@@ -368,6 +377,7 @@ fun EmptyCategoryText(message: String) {
 @Composable
 fun UnlabeledFaceItem(
     face: FaceLibraryTrait.Face,
+    imageLoader: ImageLoader? = null,
     onIKnowThem: () -> Unit,
     onIDontKnow: () -> Unit,
     onNotAPerson: () -> Unit
@@ -375,7 +385,7 @@ fun UnlabeledFaceItem(
     var menuExpanded by remember { mutableStateOf(false) }
 
     Box {
-        FaceItemCard(face = face) {
+        FaceItemCard(face = face, imageLoader = imageLoader) {
             menuExpanded = true
         }
         DropdownMenu(
@@ -413,6 +423,7 @@ fun UnlabeledFaceItem(
 @Composable
 fun FaceItemCard(
     face: FaceLibraryTrait.Face,
+    imageLoader: ImageLoader? = null,
     onClick: () -> Unit
 ) {
     Box(
@@ -425,6 +436,7 @@ fun FaceItemCard(
     ) {
         AsyncImage(
             model = face.mostRepresentativeFaceInstance?.url,
+            imageLoader = imageLoader ?: LocalContext.current.imageLoader,
             contentDescription = face.Name ?: "Face",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
@@ -492,6 +504,7 @@ fun SectionHeader(title: String) {
 @Composable
 fun KnownFaceDetailsSheet(
     face: FaceLibraryTrait.Face,
+    imageLoader: ImageLoader? = null,
     onDismiss: () -> Unit,
     onUpdateName: (String) -> Unit
 ) {
@@ -561,6 +574,7 @@ fun KnownFaceDetailsSheet(
                             ) {
                                 AsyncImage(
                                     model = instance?.url,
+                                    imageLoader = imageLoader ?: LocalContext.current.imageLoader,
                                     contentDescription = "Candidate",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -584,6 +598,7 @@ fun KnownFaceDetailsSheet(
 @Composable
 fun NotAPersonSheet(
     faces: List<FaceLibraryTrait.Face>,
+    imageLoader: ImageLoader? = null,
     onDismiss: () -> Unit,
     onRevertToUnlabeled: (FaceLibraryTrait.Face) -> Unit
 ) {
@@ -606,7 +621,7 @@ fun NotAPersonSheet(
                 Spacer(modifier = Modifier.height(32.dp))
             } else {
                 FaceGrid(faces = faces) { face ->
-                    FaceItemCard(face = face) {
+                    FaceItemCard(face = face, imageLoader = imageLoader) {
                         // Tapping a "not a person" face allows reverting it back to unlabeled
                         onRevertToUnlabeled(face)
                         onDismiss()

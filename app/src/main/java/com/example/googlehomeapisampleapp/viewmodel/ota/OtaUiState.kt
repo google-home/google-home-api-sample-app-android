@@ -23,7 +23,7 @@ sealed interface OtaUiState {
     data object Checking : OtaUiState
     data class Downloading(val progressPercent: Int?, val currentVersionString: String? = null) : OtaUiState
     data class Installing(val currentVersionString: String? = null) : OtaUiState
-    data class Deferred(val reason: String, val currentVersionString: String? = null) : OtaUiState
+    data class Delayed(val reason: String, val currentVersionString: String? = null) : OtaUiState
     data class Failed(val currentVersionString: String? = null) : OtaUiState
 }
 
@@ -40,10 +40,10 @@ fun mapUpdateStateToUiState(
             currentVersionString = versionString
         )
         UpdateStateEnum.Applying -> OtaUiState.Installing(currentVersionString = versionString)
-        UpdateStateEnum.DelayedOnQuery -> OtaUiState.Deferred("Server rate limited", versionString)
-        UpdateStateEnum.DelayedOnApply -> OtaUiState.Deferred("Scheduled overnight", versionString)
-        UpdateStateEnum.DelayedOnUserConsent -> OtaUiState.Deferred("Awaiting physical device consent", versionString)
+        UpdateStateEnum.DelayedOnQuery -> OtaUiState.Delayed("waiting after a busy response", versionString)
+        UpdateStateEnum.DelayedOnApply -> OtaUiState.Delayed("waiting due to the next action", versionString)
+        UpdateStateEnum.DelayedOnUserConsent -> OtaUiState.Delayed("waiting on user consent", versionString)
         UpdateStateEnum.RollingBack -> OtaUiState.Failed(currentVersionString = versionString)
-        UpdateStateEnum.Unknown, UpdateStateEnum.UnknownValue, null -> OtaUiState.UpToDate(currentVersionString = versionString)
+        UpdateStateEnum.Unknown, UpdateStateEnum.UnknownValue, null -> OtaUiState.Checking
     }
 }

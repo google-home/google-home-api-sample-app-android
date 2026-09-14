@@ -68,16 +68,15 @@ class CommissioningManager(
 
   // OTA Screen Callback
   /**
-   * Callback invoked when a camera device is successfully commissioned.
-   * This triggers the OTA information screen.
+   * Callback invoked when a device is successfully commissioned.
+   * This triggers the OTA information screen, passing the primary deviceId and all deviceIds.
    */
-  var onCameraCommissioned: ((String) -> Unit)? = null
+  var onDeviceCommissioned: ((String, List<String>) -> Unit)? = null
 
   /**
-   * Tracks whether we're expecting a camera device based on the fabric type
-   * used to initiate commissioning. Set to true when FabricType.GOOGLE_CAMERA is used.
+   * Tracks whether we're expecting an OTA-capable device based on commissioning flow.
    */
-  private var expectingCameraDevice = false
+  private var expectingOtaDevice = false
 
   val commissioningResult: MutableStateFlow<CommissioningResult?> = MutableStateFlow(null)
   val launcher: ActivityResultLauncher<IntentSenderRequest>
@@ -118,7 +117,7 @@ class CommissioningManager(
         TAG,
         "Commissioning process cancelled by system or user. Code: ${activityResult.resultCode}"
       )
-      expectingCameraDevice = false
+      expectingOtaDevice = false
       return
     }
 
@@ -164,16 +163,16 @@ class CommissioningManager(
       // Record the commissioning success status:
       MainActivity.showDebug(this, "Commissioning Success!")
 
-      val deviceIds = result.deviceIds
-      if (deviceIds != null) {
-        for (deviceId in deviceIds) {
-          MainActivity.showDebug(this, "Commissioned Device ID: $deviceId")
+      val deviceIds = result.deviceIds ?: emptyList()
+      Log.i(TAG, "Commissioning completed successfully. deviceIds=$deviceIds")
+      for (deviceId in deviceIds) {
+        MainActivity.showDebug(this, "Commissioned Device ID: $deviceId")
+      }
 
-          // Only show OTA screen if commissioned through GOOGLE_CAMERA flow
-          if (expectingCameraDevice) {
-            onCameraCommissioned?.invoke(deviceId)
-          }
-        }
+      if (expectingOtaDevice && deviceIds.isNotEmpty()) {
+        val primaryId = deviceIds.first()
+        Log.i(TAG, "Triggering OTA screen for primaryId=$primaryId, deviceIds=$deviceIds")
+        onDeviceCommissioned?.invoke(primaryId, deviceIds)
       }
 
     } catch (exception: ApiException) {
@@ -186,7 +185,7 @@ class CommissioningManager(
       MainActivity.showError(this, "Commissioning Callback Error: ${e.message}")
       Log.e(TAG, "Error in commissioningCallback", e)
     } finally {
-      expectingCameraDevice = false
+      expectingOtaDevice = false
     }
   }
 
@@ -194,8 +193,8 @@ class CommissioningManager(
     fabricType: FabricType,
     payload: String? = null,
   ) {
-    // Set flag to true only for camera commissioning flow
-    expectingCameraDevice = (fabricType == FabricType.GOOGLE_CAMERA)
+    // Set flag to true for all commissioning flows so OTA screen can be shown after commissioning
+    expectingOtaDevice = true
 
     // Retrieve the onboarding payload from the Activity Intent *only* if the payload wasn't provided
     val activityIntentPayload = activity.intent?.getStringExtra(Matter.EXTRA_ONBOARDING_PAYLOAD)

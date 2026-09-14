@@ -27,6 +27,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import com.example.googlehomeapisampleapp.camera.ActivityZoneStreamState
+import com.example.googlehomeapisampleapp.camera.ActivityZoneView
+import com.example.googlehomeapisampleapp.camera.CameraStreamActions
+import com.example.googlehomeapisampleapp.camera.CameraStreamOptionsState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -186,10 +190,8 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
           overflow = TextOverflow.Ellipsis
         )
 
-        if (isCameraDevice || isDoorbellDevice) {
-          IconButton(onClick = { homeAppVM.openHistoryForDevice(vm) }) {
-            Icon(Icons.Default.History, "History", tint = MaterialTheme.colorScheme.primary)
-          }
+        IconButton(onClick = { homeAppVM.openHistoryForDevice(vm) }) {
+          Icon(Icons.Default.History, "History", tint = MaterialTheme.colorScheme.primary)
         }
 
         Box {
@@ -237,19 +239,10 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
         Surface(modifier = Modifier.fillMaxSize()) {
           key(vm.id) {
             var showFamiliarFaceScreen by remember { mutableStateOf(false) }
-            if (showFamiliarFaceScreen) {
-              val activeStructureVM by homeAppVM.selectedStructureVM.collectAsStateWithLifecycle()
-              val structureIdStr = activeStructureVM?.structure?.id?.id ?: ""
-              if (structureIdStr.isEmpty()) {
-                Log.w("DeviceView", "Warning: Structure ID is empty, Familiar Face flow might fail.")
-              }
-              // Render the Familiar Face view and handle back navigation locally
-              FamiliarFaceView(
-                structureId = structureIdStr,
-                onNavigateBack = { showFamiliarFaceScreen = false }
-              )
-            } else {
+            var showActivityZoneScreen by remember { mutableStateOf(false) }
+
             val cameraVm: CameraStreamViewModel = hiltViewModel(key = vm.id.toString())
+
             val lifecycleOwner = LocalLifecycleOwner.current
             val currentCameraVm by rememberUpdatedState(cameraVm)
             DisposableEffect(lifecycleOwner) {
@@ -278,6 +271,40 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
               cameraVm.setDevice(vm.device)
             }
 
+            if (showFamiliarFaceScreen) {
+              val activeStructureVM by homeAppVM.selectedStructureVM.collectAsStateWithLifecycle()
+              val structureIdStr = activeStructureVM?.structure?.id?.id ?: ""
+              if (structureIdStr.isEmpty()) {
+                Log.w("DeviceView", "Warning: Structure ID is empty, Familiar Face flow might fail.")
+              }
+              // Render the Familiar Face view and handle back navigation locally
+              FamiliarFaceView(
+                structureId = structureIdStr,
+                onNavigateBack = { showFamiliarFaceScreen = false }
+              )
+            } else if (showActivityZoneScreen) {
+              val snapshotUrl by cameraVm.snapshotUrl.collectAsStateWithLifecycle()
+              val activityZones by cameraVm.activityZones.collectAsStateWithLifecycle()
+              val twoDCartesianMax by cameraVm.twoDCartesianMax.collectAsStateWithLifecycle()
+              val zoneUpdateStatus by cameraVm.zoneUpdateStatus.collectAsStateWithLifecycle()
+              val isCameraOn by cameraVm.isRecording.collectAsStateWithLifecycle()
+              val isFetchingLiveSnapshot by cameraVm.isFetchingLiveSnapshot.collectAsStateWithLifecycle()
+
+              ActivityZoneView(
+                snapshotUrl = snapshotUrl,
+                authenticatedImageLoader = cameraVm.authenticatedImageLoader,
+                activityZones = activityZones,
+                twoDCartesianMax = twoDCartesianMax,
+                zoneUpdateStatus = zoneUpdateStatus,
+                isCameraOn = isCameraOn,
+                isFetchingLiveSnapshot = isFetchingLiveSnapshot,
+                onRefreshLiveSnapshot = { cameraVm.refreshLiveSnapshot() },
+                onAddActivityZone = { cameraVm.addActivityZone() },
+                onDeleteActivityZone = { zoneId -> cameraVm.deleteActivityZone(zoneId) },
+                onNavigateBack = { showActivityZoneScreen = false }
+              )
+            } else {
+
             val playerState by cameraVm.state.collectAsStateWithLifecycle()
             val isTalkbackSupported by cameraVm.isTalkbackSupported.collectAsStateWithLifecycle()
             val isCameraOn by cameraVm.isRecording.collectAsStateWithLifecycle()
@@ -302,64 +329,59 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             val twoDCartesianMax by cameraVm.twoDCartesianMax.collectAsStateWithLifecycle()
             val zoneUpdateStatus by cameraVm.zoneUpdateStatus.collectAsStateWithLifecycle()
 
+            // Camera Snapshot
+            val snapshotUrl by cameraVm.snapshotUrl.collectAsStateWithLifecycle()
+            val isFetchingLiveSnapshot by cameraVm.isFetchingLiveSnapshot.collectAsStateWithLifecycle()
+
             // AI Features
             val videoAnalysisControllers by cameraVm.videoAnalysisControllers.collectAsStateWithLifecycle()
             val isToggleAiFeaturesInProgress by cameraVm.isToggleAiFeaturesInProgress.collectAsStateWithLifecycle()
 
             CameraStreamView(
               playerState = playerState,
-              isTalkbackSupported = isTalkbackSupported,
-
-              // Power Mapping
-              isCameraOn = isCameraOn,
-              isToggleRecordingInProgress = isToggleRecordingInProgress,
-              onTurnCameraOn = { cameraVm.setRecording(it) },
-
-              // Mic (Talkback) Mapping
-              isTalkbackEnabled = isTalkbackEnabled,
-              onSetTalkback = { cameraVm.setTalkback(it) },
-
-              // Cloud Audio Mapping (Using the renamed hardware-synced variables)
-              isAudioRecording = isAudioRecording,
-              isToggleAudioRecordingInProgress = isToggleAudioRecordingInProgress,
-
-              // Doorbell
-              isDoorbell = isDoorbell,
-              isChimeToggleSupported = isChimeToggleSupported,
-              onToggleChime = { cameraVm.toggleIndoorChime() },
-              chimeType = chimeType,
-              onSetChimeType = { selectedType -> cameraVm.setExternalChimeType(selectedType) },
-
-              // Timeline
-              cameraTimelineUiState = cameraTimelineUiState,
-
-              // Recording Mode
-              recordingModeOptions = recordingModeOptions,
-              selectedRecordingModeIndex = selectedRecordingModeIndex,
-              onSetRecordingMode = { index -> cameraVm.setRecordingMode(index) },
-
-              // Activity Zones
-              activityZones = activityZones,
-              twoDCartesianMax = twoDCartesianMax,
-              zoneUpdateStatus = zoneUpdateStatus,
-              onAddActivityZone = { cameraVm.addActivityZone() },
-              onDeleteActivityZone = { zoneId -> cameraVm.deleteActivityZone(zoneId) },
-
-              // Familiar Face
-              onNavigateToFamiliarFace = {
-                showFamiliarFaceScreen = true
-              },
-
-              // AI Features
-              videoAnalysisControllers = videoAnalysisControllers,
-              isToggleAiFeaturesInProgress = isToggleAiFeaturesInProgress,
-              onSetAiFeaturesEnabled = cameraVm::onSetAiFeaturesEnabled,
-              paddingValues = PaddingValues(0.dp),
-              onRetry = { cameraVm.restartInitialization() },
-              onSetAudioRecording = {cameraVm.setAudioRecording(it) },
-              onSurfaceCreated = { cameraVm.onSurfaceCreated(it) },
-              onSurfaceDestroyed = { cameraVm.onSurfaceDestroyed() },
-              onShowSnackbar = { message -> Log.d("CameraStream", message) },
+              optionsState = CameraStreamOptionsState(
+                isCameraOn = isCameraOn,
+                isTalkbackSupported = isTalkbackSupported,
+                isTalkbackEnabled = isTalkbackEnabled,
+                isAudioRecording = isAudioRecording,
+                isToggleRecordingInProgress = isToggleRecordingInProgress,
+                isToggleAudioRecordingInProgress = isToggleAudioRecordingInProgress,
+                isDoorbell = isDoorbell,
+                isChimeToggleSupported = isChimeToggleSupported,
+                chimeType = chimeType,
+                cameraTimelineUiState = cameraTimelineUiState,
+                recordingModeOptions = recordingModeOptions,
+                selectedRecordingModeIndex = selectedRecordingModeIndex,
+                videoAnalysisControllers = videoAnalysisControllers,
+                isToggleAiFeaturesInProgress = isToggleAiFeaturesInProgress,
+              ),
+              activityZoneState = ActivityZoneStreamState(
+                activityZones = activityZones,
+                twoDCartesianMax = twoDCartesianMax,
+                zoneUpdateStatus = zoneUpdateStatus,
+                snapshotUrl = snapshotUrl,
+                authenticatedImageLoader = cameraVm.authenticatedImageLoader,
+                isFetchingLiveSnapshot = isFetchingLiveSnapshot,
+              ),
+              actions = CameraStreamActions(
+                onSetRecordingMode = { index -> cameraVm.setRecordingMode(index) },
+                onRefreshLiveSnapshot = { cameraVm.refreshLiveSnapshot() },
+                onAddActivityZone = { cameraVm.addActivityZone() },
+                onDeleteActivityZone = { zoneId -> cameraVm.deleteActivityZone(zoneId) },
+                onNavigateToActivityZone = { showActivityZoneScreen = true },
+                onNavigateToFamiliarFace = { showFamiliarFaceScreen = true },
+                onSetAiFeaturesEnabled = cameraVm::onSetAiFeaturesEnabled,
+                onTurnCameraOn = { cameraVm.setRecording(it) },
+                onSetTalkback = { cameraVm.setTalkback(it) },
+                onSetAudioRecording = { cameraVm.setAudioRecording(it) },
+                onToggleChime = { cameraVm.toggleIndoorChime() },
+                onSetChimeType = { selectedType -> cameraVm.setExternalChimeType(selectedType) },
+                onRetry = { cameraVm.restartInitialization() },
+                onSurfaceCreated = { cameraVm.onSurfaceCreated(it) },
+                onSurfaceDestroyed = { cameraVm.onSurfaceDestroyed() },
+                onShowSnackbar = { message -> Log.d("CameraStream", message) },
+              ),
+              paddingValues = PaddingValues(0.dp)
             )
             }
           }
@@ -476,7 +498,7 @@ fun DeviceOtaStatusCard(otaUiState: OtaUiState) {
     is OtaUiState.UpToDate -> otaUiState.currentVersionString
     is OtaUiState.Downloading -> otaUiState.currentVersionString
     is OtaUiState.Installing -> otaUiState.currentVersionString
-    is OtaUiState.Deferred -> otaUiState.currentVersionString
+    is OtaUiState.Delayed -> otaUiState.currentVersionString
     is OtaUiState.Failed -> otaUiState.currentVersionString
     else -> null
   }
@@ -497,7 +519,7 @@ fun DeviceOtaStatusCard(otaUiState: OtaUiState) {
       "Downloading$percentText$verText"
     }
     is OtaUiState.Installing -> "Installing..."
-    is OtaUiState.Deferred -> "Deferred: ${otaUiState.reason}"
+    is OtaUiState.Delayed -> "Delayed: ${otaUiState.reason}"
     is OtaUiState.Failed -> "Failed (Restored)"
     is OtaUiState.Checking -> "Checking..."
     is OtaUiState.Loading -> "Loading..."
@@ -517,8 +539,13 @@ fun ControlListComponent(homeAppVM: HomeAppViewModel) {
   val deviceType: DeviceType by deviceVM.type.collectAsStateWithLifecycle()
   val deviceTypeName: String by deviceVM.typeName.collectAsStateWithLifecycle()
   val deviceTraits: List<Trait> = deviceVM.traits.collectAsState().value
-  val otaUiState by deviceVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
-  val isControlEnabled by deviceVM.isControlEnabled.collectAsStateWithLifecycle(true)
+  val currentOtaUiState by homeAppVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
+  val activeOtaDeviceId by homeAppVM.otaDeviceId.collectAsStateWithLifecycle()
+  val activeOtaDeviceIds by homeAppVM.otaDeviceIds.collectAsStateWithLifecycle()
+
+  val isThisDeviceUpdating = deviceVM.id == activeOtaDeviceId || activeOtaDeviceIds.contains(deviceVM.id)
+  val otaUiState = if (isThisDeviceUpdating) currentOtaUiState else OtaUiState.UpToDate()
+  val isControlEnabled = !isThisDeviceUpdating || (otaUiState !is OtaUiState.Downloading && otaUiState !is OtaUiState.Installing)
 
   Column(
     Modifier
