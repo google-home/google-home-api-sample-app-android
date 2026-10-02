@@ -52,7 +52,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -118,16 +120,22 @@ import com.google.home.Trait
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDoorbellDevice
 import com.google.home.matter.standard.BooleanState
+import com.google.home.matter.standard.Chime
+import com.google.home.matter.standard.ColorTemperatureLightDevice
+import com.google.home.matter.standard.DimmableLightDevice
 import com.google.home.matter.standard.DoorLock
 import com.google.home.matter.standard.DoorLockTrait
+import com.google.home.matter.standard.ExtendedColorLightDevice
 import com.google.home.matter.standard.FanControl
 import com.google.home.matter.standard.FanControlTrait
+import com.google.home.matter.standard.IlluminanceMeasurement
 import com.google.home.matter.standard.LevelControl
 import com.google.home.matter.standard.LevelControlTrait
 import com.google.home.matter.standard.MediaPlayback
 import com.google.home.matter.standard.MediaPlaybackTrait
 import com.google.home.matter.standard.OccupancySensing
 import com.google.home.matter.standard.OnOff
+import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.SpeakerDevice
 import com.google.home.matter.standard.TemperatureMeasurement
 import com.google.home.matter.standard.Thermostat
@@ -317,6 +325,8 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             val isDoorbell by cameraVm.isDoorbellDevice.collectAsStateWithLifecycle()
             val isChimeToggleSupported by cameraVm.isChimeToggleSupported.collectAsStateWithLifecycle()
             val chimeType by cameraVm.externalChimeType.collectAsStateWithLifecycle()
+            val installedChimeSounds by cameraVm.installedChimeSounds.collectAsStateWithLifecycle()
+            val selectedChimeId by cameraVm.selectedChimeId.collectAsStateWithLifecycle()
 
             val cameraTimelineUiState by cameraVm.cameraTimelineUiState.collectAsStateWithLifecycle()
 
@@ -337,18 +347,32 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
             val videoAnalysisControllers by cameraVm.videoAnalysisControllers.collectAsStateWithLifecycle()
             val isToggleAiFeaturesInProgress by cameraVm.isToggleAiFeaturesInProgress.collectAsStateWithLifecycle()
 
+            // Floodlight (light facet on camera)
+            val facets by vm.facets.collectAsStateWithLifecycle()
+            val floodlightFacet = facets.firstOrNull {
+              it.deviceType.factory == OnOffLightDevice ||
+                it.deviceType.factory == DimmableLightDevice ||
+                it.deviceType.factory == ColorTemperatureLightDevice ||
+                it.deviceType.factory == ExtendedColorLightDevice
+            }
+            val floodlightOnOff = floodlightFacet?.traits?.filterIsInstance<OnOff>()?.firstOrNull()
+
             CameraStreamView(
               playerState = playerState,
               optionsState = CameraStreamOptionsState(
                 isCameraOn = isCameraOn,
                 isTalkbackSupported = isTalkbackSupported,
                 isTalkbackEnabled = isTalkbackEnabled,
+                isFloodlightSupported = floodlightOnOff != null,
+                isFloodlightOn = floodlightOnOff?.onOff == true,
                 isAudioRecording = isAudioRecording,
                 isToggleRecordingInProgress = isToggleRecordingInProgress,
                 isToggleAudioRecordingInProgress = isToggleAudioRecordingInProgress,
                 isDoorbell = isDoorbell,
                 isChimeToggleSupported = isChimeToggleSupported,
                 chimeType = chimeType,
+                installedChimeSounds = installedChimeSounds,
+                selectedChimeId = selectedChimeId,
                 cameraTimelineUiState = cameraTimelineUiState,
                 recordingModeOptions = recordingModeOptions,
                 selectedRecordingModeIndex = selectedRecordingModeIndex,
@@ -373,9 +397,19 @@ fun DeviceView(homeAppVM: HomeAppViewModel) {
                 onSetAiFeaturesEnabled = cameraVm::onSetAiFeaturesEnabled,
                 onTurnCameraOn = { cameraVm.setRecording(it) },
                 onSetTalkback = { cameraVm.setTalkback(it) },
+                onSetFloodlight = { enabled ->
+                  scope.launch {
+                    try {
+                      if (enabled) floodlightOnOff?.on() else floodlightOnOff?.off()
+                    } catch (e: Exception) {
+                      Toast.makeText(context, "Floodlight toggle failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                  }
+                },
                 onSetAudioRecording = { cameraVm.setAudioRecording(it) },
                 onToggleChime = { cameraVm.toggleIndoorChime() },
                 onSetChimeType = { selectedType -> cameraVm.setExternalChimeType(selectedType) },
+                onSetSelectedChimeSound = { chimeId -> cameraVm.setSelectedChimeSound(chimeId) },
                 onRetry = { cameraVm.restartInitialization() },
                 onSurfaceCreated = { cameraVm.onSurfaceCreated(it) },
                 onSurfaceDestroyed = { cameraVm.onSurfaceDestroyed() },
@@ -515,8 +549,7 @@ fun DeviceOtaStatusCard(otaUiState: OtaUiState) {
     is OtaUiState.UpToDate -> if (hasVersionInfo) "Up to Date ($versionString)" else "Up to Date"
     is OtaUiState.Downloading -> {
       val percentText = if (otaUiState.progressPercent != null) " (${otaUiState.progressPercent}%)" else ""
-      val verText = if (hasVersionInfo) " [$versionString]" else ""
-      "Downloading$percentText$verText"
+      "Downloading$percentText"
     }
     is OtaUiState.Installing -> "Installing..."
     is OtaUiState.Delayed -> "Delayed: ${otaUiState.reason}"
@@ -539,13 +572,15 @@ fun ControlListComponent(homeAppVM: HomeAppViewModel) {
   val deviceType: DeviceType by deviceVM.type.collectAsStateWithLifecycle()
   val deviceTypeName: String by deviceVM.typeName.collectAsStateWithLifecycle()
   val deviceTraits: List<Trait> = deviceVM.traits.collectAsState().value
+  val facets by deviceVM.facets.collectAsStateWithLifecycle()
+  val deviceOtaState by deviceVM.deviceOtaUiState.collectAsStateWithLifecycle()
   val currentOtaUiState by homeAppVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
   val activeOtaDeviceId by homeAppVM.otaDeviceId.collectAsStateWithLifecycle()
   val activeOtaDeviceIds by homeAppVM.otaDeviceIds.collectAsStateWithLifecycle()
 
   val isThisDeviceUpdating = deviceVM.id == activeOtaDeviceId || activeOtaDeviceIds.contains(deviceVM.id)
-  val otaUiState = if (isThisDeviceUpdating) currentOtaUiState else OtaUiState.UpToDate()
-  val isControlEnabled = !isThisDeviceUpdating || (otaUiState !is OtaUiState.Downloading && otaUiState !is OtaUiState.Installing)
+  val otaUiState = if (isThisDeviceUpdating) currentOtaUiState else deviceOtaState
+  val isControlEnabled = otaUiState !is OtaUiState.Downloading && otaUiState !is OtaUiState.Installing
 
   Column(
     Modifier
@@ -563,8 +598,23 @@ fun ControlListComponent(homeAppVM: HomeAppViewModel) {
     }
   }
 
-  for (trait in deviceTraits) {
-    ControlListItem(trait, deviceType, enabled = isControlEnabled)
+  if (facets.size > 1) {
+    for (facet in facets) {
+      HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+      Text(
+        text = "${facet.title} (${facet.status})",
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+      )
+      for (trait in facet.traits) {
+        ControlListItem(trait, facet.deviceType, enabled = isControlEnabled)
+      }
+    }
+  } else {
+    for (trait in deviceTraits) {
+      ControlListItem(trait, deviceType, enabled = isControlEnabled)
+    }
   }
 }
 
@@ -853,6 +903,79 @@ fun ControlListItem(trait: Trait, type: DeviceType, enabled: Boolean = true) {
         }
       }
 
+      is IlluminanceMeasurement -> {
+        Column(Modifier.fillMaxWidth()) {
+          Text(trait.factory.toString(), fontSize = 20.sp)
+          Text(DeviceViewModel.getTraitStatus(trait, type), fontSize = 16.sp)
+        }
+      }
+
+      is Chime -> {
+        val sounds = trait.installedChimeSounds.orEmpty()
+        var showSoundMenu by remember { mutableStateOf(false) }
+        val currentSoundName = sounds.firstOrNull { it.chimeId == trait.selectedChime }?.name
+
+        Column(Modifier.fillMaxWidth()) {
+          Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) {
+              Text(trait.factory.toString(), fontSize = 20.sp)
+              Text(DeviceViewModel.getTraitStatus(trait, type), fontSize = 16.sp)
+            }
+
+            Switch(
+              checked = (trait.enabled != false),
+              modifier = Modifier.align(Alignment.CenterEnd),
+              onCheckedChange = { state ->
+                scope.launch {
+                  try {
+                    trait.update { setEnabled(state) }
+                  } catch (e: HomeException) {
+                    MainActivity.showWarning(this, "Updating chime failed: ${e.message}")
+                  }
+                }
+              },
+              enabled = isInteractive
+            )
+          }
+
+          if (sounds.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth()) {
+              OutlinedButton(
+                onClick = { showSoundMenu = true },
+                enabled = isInteractive,
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Text("Chime Sound: ${currentSoundName ?: "Default"}")
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Select Chime Sound")
+              }
+
+              DropdownMenu(
+                expanded = showSoundMenu,
+                onDismissRequest = { showSoundMenu = false }
+              ) {
+                sounds.forEach { sound ->
+                  DropdownMenuItem(
+                    text = { Text(sound.name) },
+                    onClick = {
+                      showSoundMenu = false
+                      scope.launch {
+                        try {
+                          trait.update { setSelectedChime(sound.chimeId) }
+                        } catch (e: HomeException) {
+                          MainActivity.showWarning(this, "Updating chime sound failed: ${e.message}")
+                        }
+                      }
+                    }
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+
       else -> return
     }
   }
@@ -1126,27 +1249,55 @@ fun WindowCoveringControlComponent(
   isConnected: Boolean,
 ) {
   val scope = rememberCoroutineScope()
-  val targetLiftPercent100ths = trait.targetPositionLiftPercent100ths ?: 0u
-  val targetTiltPercent100ths = trait.targetPositionTiltPercent100ths ?: 0u
-  val targetLiftPercentage = remember(targetLiftPercent100ths) {
-    100f - (targetLiftPercent100ths.toInt() / 100).toFloat()
-  }
-  val targetTiltDegrees = remember(targetTiltPercent100ths) {
-    (targetTiltPercent100ths.toInt() / 10000f) * 180f
-  }
-  var displayLiftPercentage by remember { mutableFloatStateOf(targetLiftPercentage) }
-  var displayTiltDegrees by remember { mutableFloatStateOf(targetTiltDegrees) }
 
-  LaunchedEffect(targetLiftPercentage) {
-    displayLiftPercentage = targetLiftPercentage
+  // 1. Resolve current physical lift position: prioritize current position, fallback to 1% resolution
+  val currentLiftPercent100ths: UShort? = trait.currentPositionLiftPercent100ths
+    ?: trait.currentPositionLiftPercentage?.let { (it.toInt() * 100).toUShort() }
+
+  // In Matter, 0 = 0.00% closed (100% open), 10000 = 100.00% closed (0% open)
+  val openLiftPercentage: Float = if (currentLiftPercent100ths != null) {
+    (100f - (currentLiftPercent100ths.toFloat() / 100f)).coerceIn(0f, 100f)
+  } else {
+    0f
   }
 
-  LaunchedEffect(targetTiltDegrees) {
-    displayTiltDegrees = targetTiltDegrees
+  // 2. Resolve target lift position: prioritize target position, fallback to current position (when at rest)
+  val effectiveTargetLiftPercent100ths: UShort? = trait.targetPositionLiftPercent100ths
+    ?: currentLiftPercent100ths
+
+  val targetLiftPercentage: Float = if (effectiveTargetLiftPercent100ths != null) {
+    (100f - (effectiveTargetLiftPercent100ths.toFloat() / 100f)).coerceIn(0f, 100f)
+  } else {
+    0f
   }
-  val isOpen = remember(displayLiftPercentage) {
-    displayLiftPercentage > 0f
+
+  val isMovingToTarget = trait.targetPositionLiftPercent100ths != null &&
+    (targetLiftPercentage.roundToInt() != openLiftPercentage.roundToInt())
+
+  // 3. Resolve tilt position: prioritize target position for slider, fallback to current position
+  val currentTiltPercent100ths: UShort? = trait.currentPositionTiltPercent100ths
+    ?: trait.currentPositionTiltPercentage?.let { (it.toInt() * 100).toUShort() }
+
+  val openTiltDegrees: Float = if (currentTiltPercent100ths != null) {
+    ((currentTiltPercent100ths.toFloat() / 10000f) * 180f).coerceIn(0f, 180f)
+  } else {
+    0f
   }
+
+  val effectiveTargetTiltPercent100ths: UShort? = trait.targetPositionTiltPercent100ths
+    ?: currentTiltPercent100ths
+
+  val targetTiltDegrees: Float = if (effectiveTargetTiltPercent100ths != null) {
+    ((effectiveTargetTiltPercent100ths.toFloat() / 10000f) * 180f).coerceIn(0f, 180f)
+  } else {
+    0f
+  }
+
+  val supportsTilt = trait.currentPositionTiltPercent100ths != null ||
+    trait.currentPositionTiltPercentage != null ||
+    trait.targetPositionTiltPercent100ths != null
+
+  val isOpen = targetLiftPercentage > 0f
 
   Column(
     modifier = Modifier.fillMaxWidth()
@@ -1175,14 +1326,9 @@ fun WindowCoveringControlComponent(
             scope.launch {
               try {
                 if (shouldOpen) {
-                  // Open to 99%
-                  val percent100ths = 100.toUShort()
-                  trait.goToLiftPercentage(percent100ths)
-                  displayLiftPercentage = 99f
+                  trait.upOrOpen()
                 } else {
-                  // Close to 0%
                   trait.downOrClose()
-                  displayLiftPercentage = 0f
                 }
               } catch (e: Exception) {
                 MainActivity.showWarning(scope, "Operation failed: ${e.message}")
@@ -1194,36 +1340,68 @@ fun WindowCoveringControlComponent(
       }
     }
 
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(20.dp))
 
-    // Lift position display and slider
+    // Current Physical Position (Read-Only Indicator)
     Box(Modifier.fillMaxWidth()) {
       Text(
-        text = "Lift Position",
+        text = "Current Position",
+        fontSize = 16.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+      )
+      Text(
+        text = "${openLiftPercentage.roundToInt()}% Open",
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.align(Alignment.CenterEnd)
+      )
+    }
+
+    LinearProgressIndicator(
+      progress = { (openLiftPercentage / 100f).coerceIn(0f, 1f) },
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(8.dp)
+        .padding(top = 8.dp),
+      trackColor = MaterialTheme.colorScheme.surfaceVariant,
+      color = MaterialTheme.colorScheme.primary,
+    )
+
+    if (isMovingToTarget) {
+      Text(
+        text = "Moving to target (${targetLiftPercentage.roundToInt()}%)...",
+        fontSize = 13.sp,
+        color = MaterialTheme.colorScheme.tertiary,
+        modifier = Modifier.padding(top = 4.dp)
+      )
+    }
+
+    Spacer(Modifier.height(24.dp))
+
+    // Target Lift Position (Interactive Slider)
+    Box(Modifier.fillMaxWidth()) {
+      Text(
+        text = "Target Lift Position",
         fontSize = 16.sp
       )
       Text(
-        text = "${displayLiftPercentage.toInt()}%",
+        text = "${targetLiftPercentage.roundToInt()}%",
         fontSize = 16.sp,
         modifier = Modifier.align(Alignment.CenterEnd)
       )
     }
 
     LevelSlider(
-      value = displayLiftPercentage,
+      value = targetLiftPercentage,
       low = 0f,
       high = 100f,
       steps = 0,
       modifier = Modifier.padding(top = 8.dp),
-      onValueChange = { value ->
-        displayLiftPercentage = value
-        true
-      },
       onValueChangeFinished = { value ->
         scope.launch {
           try {
-            val invertedPercent = 100f - value
-            val percent100ths = (invertedPercent.toInt() * 100).toUShort()
+            val invertedPercent = (100f - value).coerceIn(0f, 100f)
+            val percent100ths = (invertedPercent * 100f).roundToInt().coerceIn(0, 10000).toUShort()
             trait.goToLiftPercentage(percent100ths)
           } catch (e: Exception) {
             MainActivity.showWarning(scope, "Lift position change failed: ${e.message}")
@@ -1233,36 +1411,32 @@ fun WindowCoveringControlComponent(
       isEnabled = isConnected
     )
 
-    Spacer(Modifier.height(24.dp))
-
     // Tilt position control (if supported)
-    if (trait.targetPositionTiltPercent100ths != null) {
+    if (supportsTilt) {
+      Spacer(Modifier.height(24.dp))
+
       Box(Modifier.fillMaxWidth()) {
         Text(
           text = "Tilt Angle",
           fontSize = 16.sp
         )
         Text(
-          text = "${displayTiltDegrees.toInt()}°",
+          text = "${targetTiltDegrees.roundToInt()}°",
           fontSize = 16.sp,
           modifier = Modifier.align(Alignment.CenterEnd)
         )
       }
 
       LevelSlider(
-        value = displayTiltDegrees,
+        value = targetTiltDegrees,
         low = 0f,
         high = 180f,
         steps = 0,
         modifier = Modifier.padding(top = 8.dp),
-        onValueChange = { value ->
-          displayTiltDegrees = value
-          true
-        },
         onValueChangeFinished = { value ->
           scope.launch {
             try {
-              val percent100ths = ((value / 180f) * 10000f).toInt().toUShort()
+              val percent100ths = ((value.coerceIn(0f, 180f) / 180f) * 10000f).roundToInt().coerceIn(0, 10000).toUShort()
               trait.goToTiltPercentage(percent100ths)
             } catch (e: Exception) {
               MainActivity.showWarning(scope, "Tilt position change failed: ${e.message}")

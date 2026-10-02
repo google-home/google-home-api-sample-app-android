@@ -181,7 +181,12 @@ fun HistoryDeviceTypeFilter.toApiFilter(): HistoryFilter? = when (this) {
         HistoryFilter.event(CameraHistory.HistoryItemEvent.Companion)
             .OR(HistoryFilter.trait(CameraHistory.Companion))
     }
-    HistoryDeviceTypeFilter.DoorLock -> HistoryFilter.trait(DoorLock.Companion)
+    HistoryDeviceTypeFilter.DoorLock -> {
+        HistoryFilter.event(DoorLock.LockOperationEvent.Companion)
+            .OR(HistoryFilter.event(DoorLock.LockOperationErrorEvent.Companion))
+            .OR(HistoryFilter.event(DoorLock.DoorLockAlarmEvent.Companion))
+            .OR(HistoryFilter.trait(DoorLock.Companion))
+    }
     HistoryDeviceTypeFilter.Thermostat -> {
         HistoryFilter.trait(Thermostat.Companion)
             .OR(HistoryFilter.trait(ExtendedThermostat.Companion))

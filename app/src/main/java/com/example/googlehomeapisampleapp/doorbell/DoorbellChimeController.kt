@@ -30,8 +30,11 @@ interface DoorbellChimeController {
     val isChimeEnabled: Flow<Boolean>
     val isChimeToggleSupported: Flow<Boolean>
     val externalChimeType: Flow<ChimeTrait.ExternalChimeType>
+    val installedChimeSounds: Flow<List<ChimeTrait.ChimeSoundStruct>>
+    val selectedChimeId: Flow<UByte?>
     suspend fun setChimeEnabled(enabled: Boolean): Boolean
     suspend fun setExternalChimeType(type: ChimeTrait.ExternalChimeType): Boolean
+    suspend fun setSelectedChimeSound(chimeId: UByte): Boolean
     suspend fun getAvailableThemes(): List<String>
 }
 
@@ -75,6 +78,20 @@ class DoorbellChimeControllerImpl(private val device: HomeDevice) : DoorbellChim
         }
         .distinctUntilChanged()
 
+    override val installedChimeSounds: Flow<List<ChimeTrait.ChimeSoundStruct>> = device.type(GoogleDoorbellDevice)
+        .transform { doorbell ->
+            val trait = doorbell.trait(Chime)
+            emit(trait?.installedChimeSounds ?: emptyList())
+        }
+        .distinctUntilChanged()
+
+    override val selectedChimeId: Flow<UByte?> = device.type(GoogleDoorbellDevice)
+        .transform { doorbell ->
+            val trait = doorbell.trait(Chime)
+            emit(trait?.selectedChime)
+        }
+        .distinctUntilChanged()
+
     override suspend fun setChimeEnabled(enabled: Boolean): Boolean {
         return try {
             val doorbell = device.type(GoogleDoorbellDevice).first()
@@ -111,6 +128,27 @@ class DoorbellChimeControllerImpl(private val device: HomeDevice) : DoorbellChim
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error setting chime type", e)
+            false
+        }
+    }
+
+    override suspend fun setSelectedChimeSound(chimeId: UByte): Boolean {
+        return try {
+            val doorbell = device.type(GoogleDoorbellDevice).first()
+            val trait = doorbell.trait(Chime) ?: return false
+
+            // Check if attribute index 1u (selectedChime) is supported by the hardware
+            if (trait.attributeList.contains(Chime.Attribute.selectedChime.tag)) {
+                trait.update {
+                    setSelectedChime(chimeId)
+                }
+                true
+            } else {
+                Log.w(TAG, "Hardware does not support changing selected chime (ID 1u).")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting selected chime", e)
             false
         }
     }

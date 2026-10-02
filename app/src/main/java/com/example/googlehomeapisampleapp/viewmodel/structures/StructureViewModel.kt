@@ -26,10 +26,17 @@ import com.google.home.google.AreaPresenceStateTrait
 import com.google.home.createRoom
 import com.google.home.deleteRoom
 import com.google.home.moveDevicesToRoom
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
-class StructureViewModel(val structure: Structure) : ViewModel() {
+class StructureViewModel(
+  val structure: Structure,
+  val isMultifacetEnabled: StateFlow<Boolean> = MutableStateFlow(false),
+) : ViewModel() {
 
   var id: String = structure.id.id
   var name: String = structure.name
@@ -50,35 +57,69 @@ class StructureViewModel(val structure: Structure) : ViewModel() {
     viewModelScope.launch { subscribeToPresence() }
   }
 
+  fun clear() {
+    roomVMs.value.forEach { it.clear() }
+    deviceVMs.value.forEach { it.clear() }
+    viewModelScope.cancel()
+  }
+
+  override fun onCleared() {
+    super.onCleared()
+    clear()
+  }
+
   private suspend fun subscribeToRooms() {
     // Subscribe to changes on rooms:
     structure.rooms().collect { roomSet ->
-      val roomVMs = mutableListOf<RoomViewModel>()
-      // Store rooms in container ViewModels:
+      val previousById = this.roomVMs.value.associateBy { it.id }
+      val newRoomVMs = mutableListOf<RoomViewModel>()
+      val keptIds = mutableSetOf<String>()
+      // Store rooms in container ViewModels (reusing existing instances by room ID):
       for (room in roomSet) {
-        roomVMs.add(RoomViewModel(room))
+        keptIds.add(room.id.id)
+        val roomVM = previousById[room.id.id]?.also { it.updateName(room.name) } ?: RoomViewModel(
+          room = room,
+          isMultifacetEnabled = isMultifacetEnabled,
+          structureDeviceVMs = this.deviceVMs,
+        )
+        newRoomVMs.add(roomVM)
       }
+      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
       // Store the ViewModels:
-      this.roomVMs.emit(roomVMs)
+      this.roomVMs.emit(newRoomVMs)
     }
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun subscribeToDevices() {
-    // Subscribe to changes on devices:
-    structure.devices().collect { deviceSet ->
-      val deviceVMs = mutableListOf<DeviceViewModel>()
-      val deviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
-      // Store devices in container ViewModels:
+    // Subscribe to changes on devices based on Multifacet mode toggle:
+    isMultifacetEnabled.flatMapLatest { enabled ->
+      this.deviceVMs.value.forEach { it.clear() }
+      this.deviceVMs.value = emptyList()
+      structure.devices(enableMultipartDevices = enabled)
+    }.collect { deviceSet ->
+      val previousById = this.deviceVMs.value.associateBy { it.id }
+      val newDeviceVMs = mutableListOf<DeviceViewModel>()
+      val newDeviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
+      val keptIds = mutableSetOf<String>()
+      // Store devices in container ViewModels (reusing existing instances by device ID):
       for (device in deviceSet) {
-        val deviceVM = DeviceViewModel(device)
-        deviceVMs.add(deviceVM)
+        val existingVM = previousById[device.id.id]
+        val deviceVM = if (existingVM != null && existingVM.device.roomId == device.roomId) {
+          keptIds.add(device.id.id)
+          existingVM
+        } else {
+          DeviceViewModel(device = device)
+        }
+        newDeviceVMs.add(deviceVM)
         // For any device that's not in a room, additionally keep track of a separate list:
         if (device.roomId == null)
-          deviceWithoutRoomVMs.add(deviceVM)
+          newDeviceWithoutRoomVMs.add(deviceVM)
       }
+      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
       // Store the ViewModels:
-      this.deviceVMs.emit(deviceVMs)
-      deviceVMsWithoutRooms.emit(deviceWithoutRoomVMs)
+      this.deviceVMs.emit(newDeviceVMs)
+      deviceVMsWithoutRooms.emit(newDeviceWithoutRoomVMs)
     }
   }
 

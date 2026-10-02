@@ -38,8 +38,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
@@ -88,6 +90,8 @@ import com.example.googlehomeapisampleapp.camera.timeline.CameraTimelineUiState
 import com.google.home.google.ChimeTrait
 import com.google.home.google.ZoneManagementTrait
 
+import androidx.compose.material.icons.filled.FlashlightOff
+import androidx.compose.material.icons.filled.FlashlightOn
 import coil3.ImageLoader
 
 /**
@@ -97,6 +101,8 @@ data class CameraStreamOptionsState(
   val isCameraOn: Boolean = false,
   val isTalkbackSupported: Boolean = false,
   val isTalkbackEnabled: Boolean = false,
+  val isFloodlightSupported: Boolean = false,
+  val isFloodlightOn: Boolean = false,
   val isAudioRecording: Boolean = false,
   val isToggleRecordingInProgress: Boolean = false,
   val isToggleAudioRecordingInProgress: Boolean = false,
@@ -104,6 +110,8 @@ data class CameraStreamOptionsState(
   val isChimeToggleSupported: Boolean = false,
   val isChimeEnabled: Boolean = false,
   val chimeType: ChimeTrait.ExternalChimeType = ChimeTrait.ExternalChimeType.Electronic,
+  val installedChimeSounds: List<ChimeTrait.ChimeSoundStruct> = emptyList(),
+  val selectedChimeId: UByte? = null,
   val cameraTimelineUiState: CameraTimelineUiState? = null,
   val recordingModeOptions: List<RecordingModeOption> = emptyList(),
   val selectedRecordingModeIndex: Int? = null,
@@ -136,9 +144,11 @@ data class CameraStreamActions(
   val onSetAiFeaturesEnabled: (VideoAnalysisController, Boolean) -> Unit = { _, _ -> },
   val onTurnCameraOn: (Boolean) -> Unit = {},
   val onSetTalkback: (Boolean) -> Unit = {},
+  val onSetFloodlight: (Boolean) -> Unit = {},
   val onSetAudioRecording: (Boolean) -> Unit = {},
   val onToggleChime: () -> Unit = {},
   val onSetChimeType: (ChimeTrait.ExternalChimeType) -> Unit = {},
+  val onSetSelectedChimeSound: (UByte) -> Unit = {},
   val onRetry: () -> Unit = {},
   val onSurfaceCreated: (Surface) -> Unit = {},
   val onSurfaceDestroyed: () -> Unit = {},
@@ -232,22 +242,34 @@ fun CameraStreamView(
         )
       }
 
-      if (optionsState.isTalkbackSupported && isCurrentlyStreaming) {
+      val showTalkbackButton = optionsState.isTalkbackSupported && isCurrentlyStreaming
+      val showFloodlightButton = optionsState.isFloodlightSupported && isCurrentlyStreaming
+      if (showTalkbackButton || showFloodlightButton) {
         Spacer(modifier = Modifier.height(16.dp))
         Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.Center
+          horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
         ) {
-          MicrophoneOverlay(
-            isEnabled = optionsState.isTalkbackEnabled,
-            onToggle = { requestedEnabled ->
-              if (requestedEnabled && permissionsManager?.hasMicrophonePermission() != true) {
-                permissionsManager?.requestMicrophonePermission()
-              } else {
-                actions.onSetTalkback(requestedEnabled)
+          if (showTalkbackButton) {
+            MicrophoneOverlay(
+              isEnabled = optionsState.isTalkbackEnabled,
+              onToggle = { requestedEnabled ->
+                if (requestedEnabled && permissionsManager?.hasMicrophonePermission() != true) {
+                  permissionsManager?.requestMicrophonePermission()
+                } else {
+                  actions.onSetTalkback(requestedEnabled)
+                }
               }
-            }
-          )
+            )
+          }
+          if (showFloodlightButton) {
+            FloodlightOverlay(
+              isEnabled = optionsState.isFloodlightOn,
+              onToggle = { requestedEnabled ->
+                actions.onSetFloodlight(requestedEnabled)
+              }
+            )
+          }
         }
       }
 
@@ -274,7 +296,12 @@ fun CameraStreamView(
 
   if (showBottomSheet) {
     ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = sheetState) {
-      Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(bottom = 32.dp)
+      ) {
         // --- CAMERA POWER ---
         ListItem(
           headlineContent = { Text("Camera Power") },
@@ -586,6 +613,39 @@ fun CameraStreamView(
               }
             }
           )
+
+          if (optionsState.installedChimeSounds.isNotEmpty()) {
+            var showSoundMenu by rememberSaveable { mutableStateOf(false) }
+            val currentSoundName = optionsState.installedChimeSounds
+              .firstOrNull { it.chimeId == optionsState.selectedChimeId }
+              ?.name
+              ?: "Unknown"
+            ListItem(
+              headlineContent = { Text("Chime Sound") },
+              supportingContent = { Text("Current: $currentSoundName") },
+              modifier = Modifier.clickable { showSoundMenu = true },
+              trailingContent = {
+                Box {
+                  Icon(Icons.Default.ChevronRight, null)
+
+                  DropdownMenu(
+                    expanded = showSoundMenu,
+                    onDismissRequest = { showSoundMenu = false }
+                  ) {
+                    optionsState.installedChimeSounds.forEach { sound ->
+                      DropdownMenuItem(
+                        text = { Text(sound.name) },
+                        onClick = {
+                          actions.onSetSelectedChimeSound(sound.chimeId)
+                          showSoundMenu = false
+                        }
+                      )
+                    }
+                  }
+                }
+              }
+            )
+          }
         }
       }
     }
@@ -596,6 +656,22 @@ fun CameraStreamView(
 fun MicrophoneOverlay(isEnabled: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
   FloatingActionButton(onClick = { onToggle(!isEnabled) }, shape = CircleShape, modifier = modifier) {
     Icon(if (isEnabled) Icons.Default.Mic else Icons.Default.MicOff, null)
+  }
+}
+
+@Composable
+fun FloodlightOverlay(isEnabled: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+  FloatingActionButton(
+    onClick = { onToggle(!isEnabled) },
+    shape = CircleShape,
+    containerColor = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+    contentColor = if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer,
+    modifier = modifier
+  ) {
+    Icon(
+      imageVector = if (isEnabled) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
+      contentDescription = if (isEnabled) "Turn Floodlight Off" else "Turn Floodlight On"
+    )
   }
 }
 

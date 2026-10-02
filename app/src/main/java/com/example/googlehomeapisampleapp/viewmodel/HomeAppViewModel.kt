@@ -65,6 +65,7 @@ import com.google.home.ConsentStatus
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.automation.CommandCandidate
 import com.google.home.matter.standard.OtaSoftwareUpdateRequestor
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestorTrait.UpdateStateEnum
 import com.google.home.automation.DraftAutomation
 import com.google.home.automation.NodeCandidate
 import com.google.home.automation.UnknownDeviceType
@@ -155,6 +156,14 @@ class HomeAppViewModel(
 
   fun closeCloudLinkingSheet() {
     _showCloudLinkingSheet.value = false
+  }
+
+  // Global toggle for Multifacet / Multipart device mode
+  private val _isMultifacetEnabled = MutableStateFlow(false)
+  val isMultifacetEnabled: StateFlow<Boolean> = _isMultifacetEnabled.asStateFlow()
+
+  fun setMultifacetEnabled(enabled: Boolean) {
+    _isMultifacetEnabled.value = enabled
   }
 
   // OTA Screen State Management
@@ -581,16 +590,27 @@ class HomeAppViewModel(
   private suspend fun subscribeToStructures() {
     // Subscribe to structures returned by the Structures API:
     homeApp.homeClient.structures().collect { structureSet ->
+      val previousById = structureVMs.value.associateBy { it.id }
       val structureVMList: MutableList<StructureViewModel> = mutableListOf()
-      // Store structures in container ViewModels:
+      val keptIds = mutableSetOf<String>()
+      // Store structures in container ViewModels (reusing existing instances by structure ID):
       for (structure in structureSet) {
-        structureVMList.add(StructureViewModel(structure))
+        keptIds.add(structure.id.id)
+        val vm = previousById[structure.id.id] ?: StructureViewModel(structure, isMultifacetEnabled)
+        structureVMList.add(vm)
       }
+      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
       // Store the ViewModels:
       structureVMs.emit(structureVMList)
 
-      // If a structure isn't selected yet, select the first structure from the list:
-      if (selectedStructureVM.value == null && structureVMList.isNotEmpty()) {
+      // If a structure isn't selected yet (or was recreated), sync selectedStructureVM:
+      val currentSelected = selectedStructureVM.value
+      val matchingVM = currentSelected?.let { sel -> structureVMList.find { it.id == sel.id } }
+      if (matchingVM != null) {
+        if (matchingVM !== currentSelected) {
+          currentStructureRepository.setSelectedStructure(matchingVM)
+        }
+      } else if (structureVMList.isNotEmpty()) {
         currentStructureRepository.setSelectedStructure(structureVMList.first())
         // Load HomeBriefs once the first structure is available
         loadHomeBriefs()
@@ -630,7 +650,6 @@ class HomeAppViewModel(
    */
   @OptIn(ExperimentalCoroutinesApi::class)
   fun showOtaScreen(deviceId: String? = null, deviceIds: List<String>? = null) {
-    _showOtaScreen.value = true
     _otaUiState.value = OtaUiState.Loading
 
     val structure = selectedStructureVM.value?.structure
@@ -667,41 +686,69 @@ class HomeAppViewModel(
 
   @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun observeOtaFlow(structure: Structure, targetIds: List<String>) {
+    var hasShownScreen = false
     Log.i(TAG, "observeOtaFlow: subscribing to structure devices (enableMultipartDevices = true) with targetIds=$targetIds")
     structure
       .devices(enableMultipartDevices = true)
       .mapNotNull { devices ->
         val chosenDevice = if (targetIds.isNotEmpty()) {
           devices.firstOrNull { dev ->
-            targetIds.contains(dev.id.id) && (dev.has(OtaRequestorDevice) || dev.has(RootNodeDevice))
-          } ?: devices.firstOrNull { targetIds.contains(it.id.id) && it.has(OtaSoftwareUpdateRequestor) }
+            val hasOta = dev.has(OtaRequestorDevice) || dev.has(OtaSoftwareUpdateRequestor)
+            val matchesTarget = hasOta && (
+              targetIds.contains(dev.id.id) || run {
+                val devTypes = runCatching { dev.types().firstOrNull() }.getOrNull() ?: emptySet()
+                devTypes.any { type -> type.metadata.partId?.substringBefore(":") in targetIds }
+              }
+            )
+            matchesTarget
+          }
         } else {
-          devices.firstOrNull { it.has(OtaRequestorDevice) || it.has(RootNodeDevice) || it.has(OtaSoftwareUpdateRequestor) }
+          devices.firstOrNull { it.has(OtaRequestorDevice) || it.has(OtaSoftwareUpdateRequestor) }
         }
         if (chosenDevice != null) {
           Log.i(TAG, "observeOtaFlow: Found matching OTA target Device ID='${chosenDevice.id.id}', name='${chosenDevice.name}'")
         }
         chosenDevice
       }
+      .distinctUntilChanged { old, new -> old.id == new.id }
       .flatMapLatest { homeDevice ->
+        if (!hasShownScreen) {
+          hasShownScreen = true
+          _showOtaScreen.value = true
+        }
         _otaDeviceId.value = homeDevice.id.id
         _otaDeviceName.value = homeDevice.name
         Log.i(TAG, "observeOtaFlow: Observing OTA stream for Device ID='${homeDevice.id.id}', name='${homeDevice.name}'")
 
+        var lastUpdateState: UpdateStateEnum? = null
+
         val otaTraitFlow = combine(
-          homeDevice.typeOrNull(OtaRequestorDevice),
-          homeDevice.typeOrNull(RootNodeDevice)
+          homeDevice.typeOrNull(OtaRequestorDevice).onStart { emit(null) },
+          homeDevice.typeOrNull(RootNodeDevice).onStart { emit(null) }
         ) { otaRequestor, rootNode ->
           otaRequestor?.trait(OtaSoftwareUpdateRequestor)
             ?: rootNode?.trait(OtaSoftwareUpdateRequestor)
         }.filterNotNull()
 
-        val versionFlow = homeDevice.typeOrNull(RootNodeDevice)
-          .map { rootNode -> rootNode?.trait(BasicInformation)?.softwareVersionString }
+        val basicInfoFlow = homeDevice.typeOrNull(RootNodeDevice)
+          .map { rootNode -> rootNode?.trait(BasicInformation) }
           .onStart { emit(null) }
 
-        combine(otaTraitFlow, versionFlow) { otaTrait, versionString ->
-          otaTrait to versionString
+        combine(otaTraitFlow, basicInfoFlow) { otaTrait, basicInfo ->
+          if (otaTrait.updateState == UpdateStateEnum.Idle) {
+            if (lastUpdateState != UpdateStateEnum.Idle && basicInfo != null) {
+              lastUpdateState = UpdateStateEnum.Idle
+              runCatching {
+                Log.i(TAG, "observeOtaFlow: Forcing read of BasicInformation after OTA Idle for Device ID='${homeDevice.id.id}'")
+                basicInfo.forceRead()
+              }.onFailure { e ->
+                Log.w(TAG, "observeOtaFlow: Failed to forceRead BasicInformation for Device ID='${homeDevice.id.id}'", e)
+              }
+            }
+          } else {
+            lastUpdateState = otaTrait.updateState
+          }
+          otaTrait to basicInfo?.softwareVersionString
         }
       }
       .distinctUntilChanged()
@@ -720,12 +767,7 @@ class HomeAppViewModel(
   }
 
   fun closeOtaScreen() {
-    otaJob?.cancel()
-    otaJob = null
     _showOtaScreen.value = false
-    _otaUiState.value = OtaUiState.Loading
-    _otaDeviceId.value = null
-    _otaDeviceIds.value = emptyList()
   }
 
   /**

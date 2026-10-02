@@ -5,11 +5,13 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.errorprone.annotations.CanIgnoreReturnValue
+import com.google.home.ConsentStatus
 import com.google.home.HomeDevice
 import com.google.home.HomeException
 import com.google.home.Structure
 import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.annotation.HomeExperimentalGenericApi
+import com.google.home.featureConsentStatus
 import com.google.home.google.AvStreamAnalysis
 import com.google.home.google.AvStreamAnalysisTrait
 import com.google.home.google.FaceLibrary
@@ -34,8 +36,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -47,8 +52,27 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "FamiliarFace"
+private val FACE_LIBRARY_CONSENT_TYPE = FeatureConsentType(name = "FEATURE_FACE_LIBRARY", id = 1)
+
+/**
+ * Synchronous helper that checks whether [FACE_LIBRARY_CONSENT_TYPE] is [ConsentStatus.CONSENTED]
+ * within an already-emitted consent map. Used in reactive Flow pipelines (e.g., after
+ * `flatMapLatest { it.featureConsentStatus() }`) to transform each emitted map into a Boolean.
+ */
+private fun Map<FeatureConsentType, ConsentStatus>.isFaceLibraryConsented(): Boolean =
+    this[FACE_LIBRARY_CONSENT_TYPE] == ConsentStatus.CONSENTED
+
+/**
+ * Suspending one-shot helper on [Structure] that fetches the current snapshot (`firstOrNull()`)
+ * from [Structure.featureConsentStatus] and delegates to [Map.isFaceLibraryConsented]. Used for
+ * point-in-time checks inside sequential coroutine blocks (e.g., `refreshInternal` and `catch`).
+ */
+@OptIn(HomeExperimentalApi::class)
+private suspend fun Structure.isFaceLibraryConsented(): Boolean =
+    featureConsentStatus().firstOrNull()?.isFaceLibraryConsented() ?: false
 
 data class CameraFaceDetectionState(
     val deviceId: String,
@@ -60,7 +84,7 @@ data class CameraFaceDetectionState(
 data class FaceLibraryState(
     val isLoading: Boolean = true,
     val isConsentGranted: Boolean = false,
-    val library: Library = Library.Available(),
+    val library: Library = Library.Unavailable,
 )
 
 sealed interface Library {
@@ -113,6 +137,29 @@ open class FamiliarFaceViewModel @Inject internal constructor(
                 started = SharingStarted.WhileSubscribed(5000),
                 initialValue = FaceLibraryState(isLoading = true),
             )
+
+    init {
+        viewModelScope.launch {
+            structureFlow
+                .flatMapLatest { it.featureConsentStatus() }
+                .map { it.isFaceLibraryConsented() }
+                .distinctUntilChanged()
+                .collect { isConsented ->
+                    if (lock.isLocked) return@collect
+                    if (isConsented) {
+                        refresh()
+                    } else {
+                        _state.update {
+                            it.copy(
+                                isLoading = false,
+                                isConsentGranted = false,
+                                library = Library.Unavailable,
+                            )
+                        }
+                    }
+                }
+        }
+    }
 
     fun refresh() {
         viewModelScope.launchWithLock(lock) { refreshInternal() }
@@ -209,28 +256,39 @@ open class FamiliarFaceViewModel @Inject internal constructor(
             Log.w(TAG, "Structure does not have FaceLibrary trait.")
             return null
         }
-        return structure.trait(FaceLibrary).first()
+        return structure.trait(FaceLibrary).firstOrNull()
     }
 
     private suspend fun refreshInternal() {
-        if (!_state.value.isConsentGranted) {
-            _state.update { oldState ->
-                oldState.copy(isLoading = false, library = Library.Unavailable)
+        if (_structureId.value == null) {
+            return
+        }
+
+        val structure = structureFlow.first()
+        if (!structure.isFaceLibraryConsented()) {
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    isConsentGranted = false,
+                    library = Library.Unavailable,
+                )
             }
             return
         }
 
-        _state.update { oldState -> oldState.copy(isLoading = true) }
+        _state.update { it.copy(isLoading = true, isConsentGranted = true) }
         Log.i(TAG, "Refreshing faces...")
 
-        val trait = getFaceLibraryTraitOrNull()
-        if (trait == null) {
-            // Handle missing trait gracefully
-            _state.update { it.copy(isLoading = false, library = Library.Unavailable) }
-            return
-        }
+        val trait = withTimeoutOrNull(2_000L) {
+            structureFlow
+                .filter { it.has(FaceLibrary) }
+                .flatMapLatest { it.trait(FaceLibrary) }
+                .first {
+                    it.faceLibraryStatus == FaceLibraryTrait.FaceLibraryStatus.FaceLibraryStatusAvailable
+                }
+        } ?: getFaceLibraryTraitOrNull()
 
-        if (trait.faceLibraryStatus != FaceLibraryTrait.FaceLibraryStatus.FaceLibraryStatusAvailable) {
+        if (trait == null || trait.faceLibraryStatus != FaceLibraryTrait.FaceLibraryStatus.FaceLibraryStatusAvailable) {
             Log.w(TAG, "Could not call getFaces, the face library is unavailable.")
             _state.update { it.copy(isLoading = false, library = Library.Unavailable) }
             return
@@ -251,6 +309,7 @@ open class FamiliarFaceViewModel @Inject internal constructor(
                 )
             _state.update { oldState ->
                 oldState.copy(
+                    isConsentGranted = true,
                     library =
                         Library.Available(
                             knownFaces = faces.filter { it.category == FaceCategoryKnown },
@@ -263,13 +322,20 @@ open class FamiliarFaceViewModel @Inject internal constructor(
             }
         } catch (e: HomeException) {
             Log.e(TAG, "Failed to get faces", e)
+            val stillConsented = structureFlow.firstOrNull()?.isFaceLibraryConsented() ?: false
+            _state.update { oldState ->
+                oldState.copy(
+                    isConsentGranted = stillConsented,
+                    library = Library.Unavailable,
+                )
+            }
         } finally {
             // Ensure isLoading is disabled regardless of success or failure
             _state.update { oldState -> oldState.copy(isLoading = false) }
         }
     }
 
-    fun checkAndRequestConsent() {
+    fun checkAndRequestConsent(onDismiss: () -> Unit = {}) {
         viewModelScope.launchWithLock(lock) {
             val structureIdStr = _structureId.value
             if (structureIdStr == null) {
@@ -280,23 +346,57 @@ open class FamiliarFaceViewModel @Inject internal constructor(
             _state.update { it.copy(isLoading = true) }
 
             try {
+                val hadConsentBefore = structureFlow.first().isFaceLibraryConsented()
                 val client = homeClientProvider.getClient()
                 val result = client.updateFeatureConsent(
-                    features = listOf(FeatureConsentType("FEATURE_FACE_LIBRARY", 1)),
+                    features = listOf(FACE_LIBRARY_CONSENT_TYPE),
                     structureId = structureIdStr
                 )
 
-                if (result.granted) {
-                    Log.i(TAG, "Feature consent granted or already active.")
+                if (!result.granted) {
+                    Log.i(TAG, "Feature consent flow cancelled or dismissed.")
+                    _state.update { it.copy(isLoading = false) }
+                    onDismiss()
+                    return@launchWithLock
+                }
+
+                Log.i(TAG, "Feature consent dialog confirmed; awaiting HomeGraph sync...")
+                val flippedState: Boolean? = withTimeoutOrNull(3_000L) {
+                    structureFlow
+                        .flatMapLatest { it.featureConsentStatus() }
+                        .map { it.isFaceLibraryConsented() }
+                        .first { it != hadConsentBefore }
+                }
+
+                val isNowGranted = flippedState ?: structureFlow.first().isFaceLibraryConsented()
+                Log.i(TAG, "Post-confirm consent state resolved: isNowGranted=$isNowGranted")
+
+                if (isNowGranted) {
                     _state.update { it.copy(isConsentGranted = true) }
                     refreshInternal()
                 } else {
-                    Log.i(TAG, "Feature consent flow cancelled or denied.")
-                    _state.update { it.copy(isConsentGranted = false, isLoading = false) }
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isConsentGranted = false,
+                            library = Library.Unavailable,
+                        )
+                    }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error starting feature consent flow", e)
-                _state.update { it.copy(isConsentGranted = false, isLoading = false) }
+                Log.e(TAG, "Error in feature consent flow", e)
+                val fallbackConsent = structureFlow.firstOrNull()?.isFaceLibraryConsented() ?: false
+                if (fallbackConsent) {
+                    refreshInternal()
+                } else {
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            isConsentGranted = false,
+                            library = Library.Unavailable,
+                        )
+                    }
+                }
             }
         }
     }

@@ -88,7 +88,7 @@ fun FamiliarFaceView(
     // Trigger the consent check automatically when this screen is first composed.
     LaunchedEffect(structureId) {
         viewModel.setStructureId(structureId)
-        viewModel.checkAndRequestConsent()
+        viewModel.checkAndRequestConsent(onDismiss = onNavigateBack)
     }
 
     Scaffold(

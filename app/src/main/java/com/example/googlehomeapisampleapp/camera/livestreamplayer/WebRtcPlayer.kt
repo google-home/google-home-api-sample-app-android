@@ -200,6 +200,6 @@ class WebRtcPlayer(
 
   companion object {
     private const val TAG = "WebRtcPlayer"
-    private const val DISPOSE_TIMEOUT_MS = 1000L
+    private const val DISPOSE_TIMEOUT_MS = 5000L
   }
 }

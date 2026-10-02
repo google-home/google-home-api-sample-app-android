@@ -22,9 +22,9 @@ import com.google.home.DeviceTypeFactory
 import com.google.home.HomeDevice
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDoorbellDevice
+import com.google.home.google.PushAvStreamTransport
+import com.google.home.google.PushAvStreamTransportTrait
 import com.google.home.google.WebRtcLiveView
-import com.google.home.matter.standard.PushAvStreamTransport
-import com.google.home.matter.standard.PushAvStreamTransportTrait
 import com.google.home.trait
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

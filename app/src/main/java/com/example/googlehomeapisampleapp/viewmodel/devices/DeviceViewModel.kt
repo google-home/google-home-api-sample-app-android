@@ -21,6 +21,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFactory
 import com.example.googlehomeapisampleapp.extension.basicinformation.observeBasicInformationUiState
+import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
+import com.example.googlehomeapisampleapp.viewmodel.ota.mapUpdateStateToUiState
 import com.google.home.ConnectivityState
 import com.google.home.DecommissionEligibility
 import com.google.home.DeviceType
@@ -30,13 +32,17 @@ import com.google.home.Trait
 import com.google.home.TraitFactory
 import com.google.home.automation.UnknownDeviceType
 import com.google.home.google.Assistant
+import com.google.home.google.Chime as GoogleChime
 import com.google.home.google.GoogleCameraDevice
 import com.google.home.google.GoogleDisplayDevice
 import com.google.home.google.GoogleDoorbellDevice
 import com.google.home.google.GoogleTVDevice
+import com.google.home.google.Volume
 import com.google.home.google.WebRtcLiveView
 import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.BooleanState
+import com.google.home.matter.standard.Chime as MatterChime
+import com.google.home.matter.standard.ChimeDevice
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.ContactSensorDevice
 import com.google.home.matter.standard.DimmableLightDevice
@@ -58,6 +64,9 @@ import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.OnOffLightSwitchDevice
 import com.google.home.matter.standard.OnOffPluginUnitDevice
 import com.google.home.matter.standard.OnOffSensorDevice
+import com.google.home.matter.standard.OtaRequestorDevice
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestor
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestorTrait.UpdateStateEnum
 import com.google.home.matter.standard.RootNodeDevice
 import com.google.home.matter.standard.SpeakerDevice
 import com.google.home.matter.standard.TemperatureMeasurement
@@ -66,16 +75,27 @@ import com.google.home.matter.standard.Thermostat
 import com.google.home.matter.standard.ThermostatDevice
 import com.google.home.matter.standard.WindowCovering
 import com.google.home.matter.standard.WindowCoveringDevice
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+
+/**
+ * Represents a single functional facet (endpoint) of a device in Multifacet mode.
+ */
+data class DeviceFacetUiState(
+  val partId: String,
+  val title: String,
+  val deviceType: DeviceType,
+  val status: String,
+  val traits: List<Trait>,
+)
 
 /**
  * ViewModel for a single [HomeDevice]. This ViewModel provides access to device properties,
@@ -91,6 +111,8 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
 
   val type: MutableStateFlow<DeviceType>
   val traits: MutableStateFlow<List<Trait>>
+  val facets: MutableStateFlow<List<DeviceFacetUiState>> = MutableStateFlow(emptyList())
+  val deviceOtaUiState: MutableStateFlow<OtaUiState> = MutableStateFlow(OtaUiState.Loading)
   val typeName: MutableStateFlow<String>
   val status: MutableStateFlow<String>
   val basicInfoUiState: Flow<BasicInformationUiState> = device.observeBasicInformationUiState()
@@ -110,6 +132,77 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
 
     // Subscribe to changes on dynamic values:
     viewModelScope.launch { subscribeToType() }
+    viewModelScope.launch { subscribeToOta() }
+  }
+
+  /**
+   * Cancels active subscriptions when this ViewModel is replaced.
+   */
+  fun clear() {
+    viewModelScope.cancel()
+  }
+
+  override fun onCleared() {
+    super.onCleared()
+    clear()
+  }
+
+  /**
+   * Observes OTA traits (OtaRequestorDevice / OtaSoftwareUpdateRequestor) and softwareVersionString
+   * directly on this [device].
+   */
+  private suspend fun subscribeToOta() {
+    try {
+      var lastUpdateState: UpdateStateEnum? = null
+
+      val otaTraitFlow = combine(
+        device.typeOrNull(OtaRequestorDevice).onStart { emit(null) },
+        device.typeOrNull(RootNodeDevice).onStart { emit(null) },
+      ) { otaRequestor, rootNode ->
+        otaRequestor?.trait(OtaSoftwareUpdateRequestor)
+          ?: rootNode?.trait(OtaSoftwareUpdateRequestor)
+      }
+
+      val basicInfoFlow = device.typeOrNull(RootNodeDevice)
+        .map { rootNode -> rootNode?.trait(BasicInformation) }
+        .onStart { emit(null) }
+
+      combine(otaTraitFlow, basicInfoFlow) { otaTrait, basicInfo ->
+        if (otaTrait != null) {
+          if (otaTrait.updateState == UpdateStateEnum.Idle) {
+            if (lastUpdateState != null && lastUpdateState != UpdateStateEnum.Idle && basicInfo != null) {
+              lastUpdateState = UpdateStateEnum.Idle
+              runCatching {
+                basicInfo.forceRead()
+              }.onFailure { e ->
+                Log.w("DeviceViewModel", "Failed to forceRead BasicInformation for ${device.id.id}", e)
+              }
+            } else if (basicInfo != null) {
+              lastUpdateState = UpdateStateEnum.Idle
+            }
+          } else {
+            lastUpdateState = otaTrait.updateState
+          }
+        }
+        Pair(otaTrait, basicInfo?.softwareVersionString)
+      }.collect { (otaTrait, versionString) ->
+        if (otaTrait != null) {
+          deviceOtaUiState.emit(
+            mapUpdateStateToUiState(
+              updateState = otaTrait.updateState,
+              progress = otaTrait.updateStateProgress,
+              versionString = versionString,
+            )
+          )
+        } else if (!versionString.isNullOrBlank()) {
+          deviceOtaUiState.emit(OtaUiState.UpToDate(currentVersionString = versionString))
+        } else {
+          deviceOtaUiState.emit(OtaUiState.UpToDate())
+        }
+      }
+    } catch (e: Exception) {
+      Log.w("DeviceViewModel", "Error observing OTA state for ${device.id.id}: ${e.message}")
+    }
   }
 
   /**
@@ -161,92 +254,156 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
     }
   }
 
-  @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun subscribeToType() {
-    // Subscribe to changes on device type, and the traits/attributes within:
-    device.types().flatMapLatest { typeSet ->
-      /**
-       * Fallback type priority order.
-       *
-       * For multi-functional devices (e.g., a Doorbell that also has a Camera),
-       * the first matching type in this list takes precedence.
-       *
-       * To adjust priority, simply reorder the elements below.
-       */
-      val fallbackPriorityOrder = listOf(
-        ThermostatDevice::class,
-        GoogleDoorbellDevice::class,
-        WindowCoveringDevice::class,
-        FanDevice::class,
-        DoorLockDevice::class,
-        SpeakerDevice::class,
-        GoogleTVDevice::class,
-        DimmableLightDevice::class,
-        GoogleCameraDevice::class,
-        OnOffLightDevice::class,
-        TemperatureSensorDevice::class,
-      )
+    // Capability ranking used both for fallback primary selection and for deduplicating superset types on the same endpoint partId.
+    val capabilityPriorityOrder: List<DeviceTypeFactory<out DeviceType>> = listOf(
+      GoogleDoorbellDevice,
+      GoogleCameraDevice,
+      ThermostatDevice,
+      WindowCoveringDevice,
+      FanDevice,
+      DoorLockDevice,
+      ChimeDevice,
+      SpeakerDevice,
+      GoogleTVDevice,
+      GoogleDisplayDevice,
+      ExtendedColorLightDevice,
+      ColorTemperatureLightDevice,
+      DimmableLightDevice,
+      OnOffLightDevice,
+      OnOffPluginUnitDevice,
+      OnOffLightSwitchDevice,
+      GenericSwitchDevice,
+      LightSensorDevice,
+      TemperatureSensorDevice,
+      OccupancySensorDevice,
+      ContactSensorDevice,
+      OnOffSensorDevice,
+    )
 
-      // Find the primary type in a single, chained expression.
-      val primaryTypeCandidate: DeviceType =
-        // 1. First, try to find the officially marked primary type.
-        typeSet.find { it.metadata.isPrimaryType }
-        // 2. If not found, use the fallback priority list.
-          ?: fallbackPriorityOrder
-            .asSequence() // Use a sequence for efficiency (stops after first match)
-            .mapNotNull { priorityClass ->
-              typeSet.find { priorityClass.isInstance(it) }
-            }
+    device.types()
+      .collect { mainTypeSet ->
+        // Group functional (non-utility) device types by endpoint partId so superset types (e.g. 4 Light types on 0000.010D) produce 1 facet.
+        val functionalEntries: List<DeviceType> = mainTypeSet
+          .filter { t -> t !is RootNodeDevice && t !is OtaRequestorDevice && t !is UnknownDeviceType }
+
+        val selectedByPartId: List<DeviceType> = functionalEntries
+          .groupBy { t -> t.metadata.partId ?: "${device.id.id}:${t.factory}" }
+          .values
+          .mapNotNull { group ->
+            group.minWithOrNull(
+              compareBy<DeviceType>(
+                { t -> if (device.id.id == t.metadata.partId?.substringBefore(":")) 0 else 1 },
+                { t ->
+                  val idx = capabilityPriorityOrder.indexOf(t.factory)
+                  if (idx >= 0) idx else Int.MAX_VALUE
+                }
+              )
+            )
+          }
+          .sortedWith(
+            compareBy<DeviceType>(
+              { t ->
+                val idx = capabilityPriorityOrder.indexOf(t.factory)
+                if (idx >= 0) idx else Int.MAX_VALUE
+              },
+              { t -> t.metadata.partId ?: "" }
+            )
+          )
+
+        val liveFacetTypes = if (selectedByPartId.isEmpty()) {
+          val fallbackType = mainTypeSet.firstOrNull() ?: UnknownDeviceType()
+          listOf(fallbackType)
+        } else {
+          selectedByPartId
+        }
+
+        val primaryType: DeviceType =
+          liveFacetTypes.firstOrNull { it.metadata.isPrimaryType }
+            ?: liveFacetTypes.firstOrNull()
+            ?: mainTypeSet.firstOrNull()
+            ?: UnknownDeviceType()
+
+        connectivity = primaryType.metadata.sourceConnectivity.connectivityState
+
+        // Count occurrences of each base title so multiple identical endpoints (e.g. 5 Outlets on a Power Strip) are numbered 1..N.
+        val baseTitleCounts = liveFacetTypes
+          .groupingBy { facetType ->
+            nameMap[facetType.factory] ?: facetType.factory.toString().substringAfterLast(".")
+          }
+          .eachCount()
+        val baseTitleIndices = mutableMapOf<String, Int>()
+
+        // Build DeviceFacetUiState list for all discovered endpoints:
+        val facetUiStates = liveFacetTypes.map { facetType ->
+          val facetTraits = getSupportedTraits(facetType.traits(), mainTypeSet, facetType)
+          val baseTitle = nameMap[facetType.factory] ?: facetType.factory.toString().substringAfterLast(".")
+          val facetTitle = if ((baseTitleCounts[baseTitle] ?: 0) > 1) {
+            val nextIdx = (baseTitleIndices[baseTitle] ?: 0) + 1
+            baseTitleIndices[baseTitle] = nextIdx
+            "$baseTitle $nextIdx"
+          } else {
+            baseTitle
+          }
+          val facetStatus = getDeviceStatus(facetType, facetTraits)
+          DeviceFacetUiState(
+            partId = facetType.metadata.partId ?: device.id.id,
+            title = facetTitle,
+            deviceType = facetType,
+            status = facetStatus,
+            traits = facetTraits,
+          )
+        }
+        facets.emit(facetUiStates)
+
+        val primaryTraits = getSupportedTraits(primaryType.traits(), mainTypeSet, primaryType)
+        val combinedTraits = if (facetUiStates.size > 1) {
+          facetUiStates.flatMap { it.traits }
+        } else {
+          primaryTraits
+        }
+
+        if (name.value == device.name && device.name.endsWith(" device", ignoreCase = true)) {
+          val rootProductName = mainTypeSet
+            .filterIsInstance<RootNodeDevice>()
             .firstOrNull()
-          // 3. If still not found, use the first type if there are any.
-          ?: typeSet.firstOrNull()
-          // 4. If all else fails, default to UnknownDeviceType.
-          ?: UnknownDeviceType()
-
-      // Observe attribute state changes for the primary device type:
-      // If the type is Unknown, bypass observation to prevent UI hangs.
-      if (primaryTypeCandidate is UnknownDeviceType) {
-        flowOf(Pair(primaryTypeCandidate, typeSet))
-      } else {
-        device.type(primaryTypeCandidate.factory).map { updatedPrimaryType ->
-          Pair(updatedPrimaryType, typeSet)
+            ?.standardTraits
+            ?.basicInformation
+            ?.productName
+            ?.takeIf { it.isNotBlank() }
+          if (rootProductName != null) {
+            name.emit(rootProductName)
+          }
         }
-      }
-    }.collect { (primaryType, typeSet) ->
-      // Set the connectivityState from the primary device type:
-      connectivity = primaryType.metadata.sourceConnectivity.connectivityState
 
-      // Container for list of supported traits present on the primary device type:
-      // FIX: Pass the current typeSet (all device types) and primaryType to getSupportedTraits
-      val supportedTraits: List<Trait> = getSupportedTraits(primaryType.traits(), typeSet, primaryType)
+        type.emit(primaryType)
 
-      // Store the primary type as the device type:
-      type.emit(primaryType)
-
-      // ------------------------------------------------------------------
-      // *** DIRECT NAME OVERRIDE FOR UNRECOGNIZED CAMERA DEVICE ***
-      var emittedTypeName = nameMap[primaryType.factory] ?: "Unsupported Device"
-
-      // Check if the device is the generic RootNodeDevice AND matches the target camera's VID/PID
-      if (primaryType is RootNodeDevice) {
-        val basicInfo = primaryType.standardTraits.basicInformation
-        // Re-added .toInt() conversion here:
-        if (basicInfo?.vendorId?.toInt() == ONN_CAMERA_VID && basicInfo.productId?.toInt() == ONN_CAMERA_PID) {
-          // Manually override the name string
-          emittedTypeName = "Camera"
+        var emittedTypeName = if (facetUiStates.size > 1) {
+          facetUiStates
+            .map { nameMap[it.deviceType.factory] ?: it.title }
+            .distinct()
+            .joinToString(" / ")
+        } else {
+          nameMap[primaryType.factory] ?: "Unsupported Device"
         }
+
+        if (primaryType is RootNodeDevice) {
+          val basicInfo = primaryType.standardTraits.basicInformation
+          if (basicInfo?.vendorId?.toInt() == ONN_CAMERA_VID && basicInfo.productId?.toInt() == ONN_CAMERA_PID) {
+            emittedTypeName = "Camera"
+          }
+        }
+
+        typeName.emit(emittedTypeName)
+        traits.emit(combinedTraits)
+
+        val emittedStatus = if (facetUiStates.size > 1) {
+          facetUiStates.joinToString(" • ") { "${it.title}: ${it.status}" }
+        } else {
+          getDeviceStatus(primaryType, primaryTraits)
+        }
+        status.emit(emittedStatus)
       }
-
-      // Determine the name for this type and store:
-      typeName.emit(emittedTypeName)
-      // ------------------------------------------------------------------
-
-      // From the primary type, get the supported traits:
-      traits.emit(supportedTraits)
-
-      // Publish a device status based on connectivity, deviceType, and available traits:
-      status.emit(getDeviceStatus(primaryType, supportedTraits))
-    }
   }
 
   /**
@@ -295,6 +452,7 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
 
     // Map determining which trait value is going to be displayed as status for this device:
     val statusMap: Map<DeviceTypeFactory<out DeviceType>, TraitFactory<out Trait>> = mapOf(
+      ChimeDevice to MatterChime,
       ColorTemperatureLightDevice to OnOff,
       ContactSensorDevice to BooleanState,
       DimmableLightDevice to OnOff,
@@ -320,6 +478,7 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
 
     // Map determining the user readable value for this device:
     val nameMap: Map<DeviceTypeFactory<out DeviceType>, String> = mapOf(
+      ChimeDevice to "Chime",
       ColorTemperatureLightDevice to "Light",
       ContactSensorDevice to "Sensor",
       DimmableLightDevice to "Light",
@@ -331,7 +490,7 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
       GoogleDisplayDevice to "Hub",
       GoogleDoorbellDevice to "Doorbell",
       GoogleTVDevice to "TV",
-      LightSensorDevice to "Sensor",
+      LightSensorDevice to "Light Sensor",
       OccupancySensorDevice to "Sensor",
       OnOffLightDevice to "Light",
       OnOffLightSwitchDevice to "Switch",
@@ -390,6 +549,30 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
         type.metadata.sourceConnectivity.connectivityState != ConnectivityState.PARTIALLY_ONLINE
       )
         return "Offline"
+
+      if (type.factory == ChimeDevice) {
+        val matterChime = traits.filterIsInstance<MatterChime>().firstOrNull()
+        val googleChime = traits.filterIsInstance<GoogleChime>().firstOrNull()
+        return when {
+          matterChime != null -> getTraitStatus(matterChime, type)
+          googleChime != null -> getTraitStatus(googleChime, type)
+          else -> "Online"
+        }
+      }
+
+      if (type.factory == SpeakerDevice) {
+        val onOffTrait = traits.filterIsInstance<OnOff>().firstOrNull()
+        if (onOffTrait?.onOff == false) return "Off"
+        val volumeTrait = traits.filterIsInstance<Volume>().firstOrNull()
+        if (volumeTrait?.currentVolumePercent != null) return getTraitStatus(volumeTrait, type)
+        val levelTrait = traits.filterIsInstance<LevelControl>().firstOrNull()
+        if (levelTrait?.currentLevel != null) return "${levelTrait.currentLevel}%"
+        val mediaTrait = traits.filterIsInstance<MediaPlayback>().firstOrNull()
+        if (mediaTrait != null) return getTraitStatus(mediaTrait, type)
+        if (onOffTrait != null) return getTraitStatus(onOffTrait, type)
+        return "Online"
+      }
+
       if (type.factory == FanDevice) {
         val fanControlTrait = traits.filterIsInstance<FanControl>().firstOrNull()
         val onOffTrait = traits.filterIsInstance<OnOff>().firstOrNull()
@@ -434,6 +617,18 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
       val status: String = when (trait) {
         is Assistant -> {
           "Assistant Ready"
+        }
+
+        is MatterChime -> {
+          if (trait.enabled != false) "Enabled" else "Muted"
+        }
+
+        is GoogleChime -> {
+          if (trait.enabled != false) "Enabled" else "Muted"
+        }
+
+        is Volume -> {
+          if (trait.isMuted == true) "Muted" else "${trait.currentVolumePercent ?: 0}%"
         }
 
         is BooleanState -> {
