@@ -32,7 +32,8 @@ import com.google.home.google.AvStreamAnalysis
 import com.google.home.google.CameraAvStreamManagement
 import com.google.home.google.CameraHistory
 import com.google.home.google.CameraSnapshot
-import com.google.home.google.Chime
+import com.google.home.google.CameraTimeline
+import com.google.home.google.Chime as GoogleChime
 import com.google.home.google.ChimeThemes
 import com.google.home.google.ExtendedApplicationLauncher
 import com.google.home.google.ExtendedBasicInformation
@@ -58,6 +59,7 @@ import com.google.home.google.ZoneManagement
 import com.google.home.matter.standard.AudioOutput
 import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.BooleanState
+import com.google.home.matter.standard.Chime
 import com.google.home.matter.standard.ChimeDevice
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.ContactSensorDevice
@@ -167,6 +169,7 @@ listOf(
       CameraAvStreamManagement,
       CameraHistory,
       CameraSnapshot,
+      CameraTimeline,
       Chime,
       ChimeThemes,
       DoorLock,
@@ -177,6 +180,7 @@ listOf(
       ExtendedMediaPlayback,
       FaceLibrary,
       FanControl,
+      GoogleChime,
       IlluminanceMeasurement,
       LevelControl,
       MediaActivityState,

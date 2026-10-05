@@ -158,6 +158,18 @@ open class CameraStreamViewModel @Inject internal constructor(
       .flatMapLatest { it?.externalChimeType ?: flowOf(ChimeTrait.ExternalChimeType.Electronic) }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), ChimeTrait.ExternalChimeType.Electronic)
 
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val installedChimeSounds: StateFlow<List<ChimeTrait.ChimeSoundStruct>> =
+    _doorbellChimeController
+      .flatMapLatest { it?.installedChimeSounds ?: flowOf(emptyList()) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), emptyList())
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val selectedChimeId: StateFlow<UByte?> =
+    _doorbellChimeController
+      .flatMapLatest { it?.selectedChimeId ?: flowOf(null) }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(FLOW_STOP_TIMEOUT_MS), null)
+
   // Recording mode controller
   private val _recordingModeController = MutableStateFlow<RecordingModeController?>(null)
 
@@ -903,6 +915,14 @@ open class CameraStreamViewModel @Inject internal constructor(
     viewModelScope.launch {
       Log.d(TAG, "Setting Physical Chime Type to: $type")
       controller.setExternalChimeType(type)
+    }
+  }
+
+  fun setSelectedChimeSound(chimeId: UByte) {
+    val controller = _doorbellChimeController.value ?: return
+    viewModelScope.launch {
+      Log.d(TAG, "Setting Selected Chime Sound ID to: $chimeId")
+      controller.setSelectedChimeSound(chimeId)
     }
   }
 

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -151,6 +152,21 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
         onClick = {
           expanded = false
           onNavigateToPresenceSettings()
+        }
+      )
+      val isMultifacetEnabled by homeAppVM.isMultifacetEnabled.collectAsStateWithLifecycle()
+      DropdownMenuItem(
+        text = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+              checked = isMultifacetEnabled,
+              onCheckedChange = null // Handled by DropdownMenuItem onClick
+            )
+            Text("Multifacet Mode", modifier = Modifier.padding(start = 8.dp))
+          }
+        },
+        onClick = {
+          homeAppVM.setMultifacetEnabled(!isMultifacetEnabled)
         }
       )
     }

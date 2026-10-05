@@ -20,12 +20,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.google.home.Room
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
-class RoomViewModel(val room: Room) : ViewModel() {
+class RoomViewModel(
+  val room: Room,
+  val isMultifacetEnabled: StateFlow<Boolean> = MutableStateFlow(false),
+  private val structureDeviceVMs: StateFlow<List<DeviceViewModel>>? = null,
+) : ViewModel() {
 
   var id: String = room.id.id
   private val _name = MutableStateFlow("")
@@ -43,16 +50,52 @@ class RoomViewModel(val room: Room) : ViewModel() {
     viewModelScope.launch { subscribeToDevices() }
   }
 
+  fun updateName(newName: String) {
+    _name.value = newName
+  }
+
+  fun clear() {
+    if (structureDeviceVMs == null) {
+      deviceVMs.value.forEach { it.clear() }
+    }
+    viewModelScope.cancel()
+  }
+
+  override fun onCleared() {
+    super.onCleared()
+    clear()
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun subscribeToDevices() {
-    // Subscribe to changes on devices:
-    room.devices().collect { deviceSet ->
-      val deviceVMs = mutableListOf<DeviceViewModel>()
-      // Store devices in container ViewModels:
-      for (device in deviceSet) {
-        deviceVMs.add(DeviceViewModel(device))
+    if (structureDeviceVMs != null) {
+      structureDeviceVMs.collect { allDevices ->
+        this.deviceVMs.emit(allDevices.filter { it.device.roomId == room.id })
       }
-      // Store the ViewModels:
-      this.deviceVMs.emit(deviceVMs)
+      return
+    }
+
+    // Fallback if RoomViewModel is constructed standalone without StructureViewModel:
+    isMultifacetEnabled.flatMapLatest { enabled ->
+      this.deviceVMs.value.forEach { it.clear() }
+      this.deviceVMs.value = emptyList()
+      room.devices(enableMultipartDevices = enabled)
+    }.collect { deviceSet ->
+      val previousById = this.deviceVMs.value.associateBy { it.id }
+      val newDeviceVMs = mutableListOf<DeviceViewModel>()
+      val keptIds = mutableSetOf<String>()
+      for (device in deviceSet) {
+        val existingVM = previousById[device.id.id]
+        val deviceVM = if (existingVM != null && existingVM.device.roomId == device.roomId) {
+          keptIds.add(device.id.id)
+          existingVM
+        } else {
+          DeviceViewModel(device = device)
+        }
+        newDeviceVMs.add(deviceVM)
+      }
+      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
+      this.deviceVMs.emit(newDeviceVMs)
     }
   }
 
@@ -76,8 +119,7 @@ class RoomViewModel(val room: Room) : ViewModel() {
     try {
       Log.d(TAG, "Renaming room from '${name.value}' to '$newRoomName'")
       room.setName(newRoomName)
-      // The room name should be updated automatically by the Room API
-      // If not, we might need to manually update: _name.value = newRoomName
+      _name.value = newRoomName
       Log.d(TAG, "Successfully renamed room to '$newRoomName'")
     } catch (e: Exception) {
       Log.e(TAG, "Failed to rename room from '${name.value}' to '$newRoomName': ${e.message}", e)

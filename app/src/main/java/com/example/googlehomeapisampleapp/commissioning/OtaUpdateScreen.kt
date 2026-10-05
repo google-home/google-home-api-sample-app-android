@@ -189,11 +189,6 @@ fun OtaUpdateScreen(
                                 Text(text = "Checking for updates...", style = MaterialTheme.typography.bodyMedium)
                             }
                             is OtaUiState.Downloading -> {
-                                val version = formatVersionString(otaUiState.currentVersionString)
-                                version?.let {
-                                    Text(text = "Target Version: v$it", style = MaterialTheme.typography.labelMedium)
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                }
                                 if (otaUiState.progressPercent != null) {
                                     LinearProgressIndicator(
                                         progress = { otaUiState.progressPercent / 100f },
