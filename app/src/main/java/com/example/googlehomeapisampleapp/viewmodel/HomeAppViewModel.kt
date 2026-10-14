@@ -588,34 +588,35 @@ class HomeAppViewModel(
   }
 
   private suspend fun subscribeToStructures() {
-    // Subscribe to structures returned by the Structures API:
-    homeApp.homeClient.structures().collect { structureSet ->
-      val previousById = structureVMs.value.associateBy { it.id }
-      val structureVMList: MutableList<StructureViewModel> = mutableListOf()
-      val keptIds = mutableSetOf<String>()
-      // Store structures in container ViewModels (reusing existing instances by structure ID):
-      for (structure in structureSet) {
-        keptIds.add(structure.id.id)
-        val vm = previousById[structure.id.id] ?: StructureViewModel(structure, isMultifacetEnabled)
-        structureVMList.add(vm)
-      }
-      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
-      // Store the ViewModels:
-      structureVMs.emit(structureVMList)
-
-      // If a structure isn't selected yet (or was recreated), sync selectedStructureVM:
-      val currentSelected = selectedStructureVM.value
-      val matchingVM = currentSelected?.let { sel -> structureVMList.find { it.id == sel.id } }
-      if (matchingVM != null) {
-        if (matchingVM !== currentSelected) {
-          currentStructureRepository.setSelectedStructure(matchingVM)
-        }
-      } else if (structureVMList.isNotEmpty()) {
-        currentStructureRepository.setSelectedStructure(structureVMList.first())
-        // Load HomeBriefs once the first structure is available
-        loadHomeBriefs()
-      }
-    }
+// TODO: 5.1.1 - Subscribe the structure data changes
+//     // Subscribe to structures returned by the Structures API:
+//     homeApp.homeClient.structures().collect { structureSet ->
+//       val previousById = structureVMs.value.associateBy { it.id }
+//       val structureVMList: MutableList<StructureViewModel> = mutableListOf()
+//       val keptIds = mutableSetOf<String>()
+//       // Store structures in container ViewModels (reusing existing instances by structure ID):
+//       for (structure in structureSet) {
+//         keptIds.add(structure.id.id)
+//         val vm = previousById[structure.id.id] ?: StructureViewModel(structure, isMultifacetEnabled)
+//         structureVMList.add(vm)
+//       }
+//       previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
+//       // Store the ViewModels:
+//       structureVMs.emit(structureVMList)
+//
+//       // If a structure isn't selected yet (or was recreated), sync selectedStructureVM:
+//       val currentSelected = selectedStructureVM.value
+//       val matchingVM = currentSelected?.let { sel -> structureVMList.find { it.id == sel.id } }
+//       if (matchingVM != null) {
+//         if (matchingVM !== currentSelected) {
+//           currentStructureRepository.setSelectedStructure(matchingVM)
+//         }
+//       } else if (structureVMList.isNotEmpty()) {
+//         currentStructureRepository.setSelectedStructure(structureVMList.first())
+//         // Load HomeBriefs once the first structure is available
+//         loadHomeBriefs()
+//       }
+//     }
   }
 
   /**

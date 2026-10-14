@@ -262,16 +262,17 @@ fun DevicesView(
               expanded = structurePickerExpanded,
               onDismissRequest = { structurePickerExpanded = false },
             ) {
-              for (structure in structureVMs) {
-                val presence by structure.presenceState.collectAsState()
-                DropdownMenuItem(
-                  text = { Text("${structure.name} ($presence)") },
-                  onClick = {
-                    homeAppVM.setSelectedStructure(structure)
-                    structurePickerExpanded = false
-                  },
-                )
-              }
+// TODO: 5.1.2 - Show list of structures in DropdownMenu
+//               for (structure in structureVMs) {
+//                 val presence by structure.presenceState.collectAsState()
+//                 DropdownMenuItem(
+//                   text = { Text("${structure.name} ($presence)") },
+//                   onClick = {
+//                     homeAppVM.setSelectedStructure(structure)
+//                     structurePickerExpanded = false
+//                   },
+//                 )
+//               }
             }
           }
         }
@@ -431,13 +432,15 @@ fun DeviceListComponent(
 
   Column {
     for (roomVM in selectedRoomVMs) {
-      RoomListItem(roomVM, onClick = onRoomClick)
+// TODO: 5.2.3 - Render the list of rooms
+//       RoomListItem(roomVM, onClick = onRoomClick)
 
-      val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
-
-      for (deviceVM in deviceVMsInRoom) {
-        DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
-      }
+// TODO: 5.2.4 - Render the list of devices in a room
+//       val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
+//
+//       for (deviceVM in deviceVMsInRoom) {
+//         DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
+//       }
     }
 
     if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {

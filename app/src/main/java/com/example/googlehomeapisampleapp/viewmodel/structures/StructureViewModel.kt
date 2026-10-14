@@ -69,58 +69,60 @@ class StructureViewModel(
   }
 
   private suspend fun subscribeToRooms() {
-    // Subscribe to changes on rooms:
-    structure.rooms().collect { roomSet ->
-      val previousById = this.roomVMs.value.associateBy { it.id }
-      val newRoomVMs = mutableListOf<RoomViewModel>()
-      val keptIds = mutableSetOf<String>()
-      // Store rooms in container ViewModels (reusing existing instances by room ID):
-      for (room in roomSet) {
-        keptIds.add(room.id.id)
-        val roomVM = previousById[room.id.id]?.also { it.updateName(room.name) } ?: RoomViewModel(
-          room = room,
-          isMultifacetEnabled = isMultifacetEnabled,
-          structureDeviceVMs = this.deviceVMs,
-        )
-        newRoomVMs.add(roomVM)
-      }
-      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
-      // Store the ViewModels:
-      this.roomVMs.emit(newRoomVMs)
-    }
+// TODO: 5.2.1 - Subscribe the room data changes
+//     // Subscribe to changes on rooms:
+//     structure.rooms().collect { roomSet ->
+//       val previousById = this.roomVMs.value.associateBy { it.id }
+//       val newRoomVMs = mutableListOf<RoomViewModel>()
+//       val keptIds = mutableSetOf<String>()
+//       // Store rooms in container ViewModels (reusing existing instances by room ID):
+//       for (room in roomSet) {
+//         keptIds.add(room.id.id)
+//         val roomVM = previousById[room.id.id]?.also { it.updateName(room.name) } ?: RoomViewModel(
+//           room = room,
+//           isMultifacetEnabled = isMultifacetEnabled,
+//           structureDeviceVMs = this.deviceVMs,
+//         )
+//         newRoomVMs.add(roomVM)
+//       }
+//       previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
+//       // Store the ViewModels:
+//       this.roomVMs.emit(newRoomVMs)
+//     }
   }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun subscribeToDevices() {
-    // Subscribe to changes on devices based on Multifacet mode toggle:
-    isMultifacetEnabled.flatMapLatest { enabled ->
-      this.deviceVMs.value.forEach { it.clear() }
-      this.deviceVMs.value = emptyList()
-      structure.devices(enableMultipartDevices = enabled)
-    }.collect { deviceSet ->
-      val previousById = this.deviceVMs.value.associateBy { it.id }
-      val newDeviceVMs = mutableListOf<DeviceViewModel>()
-      val newDeviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
-      val keptIds = mutableSetOf<String>()
-      // Store devices in container ViewModels (reusing existing instances by device ID):
-      for (device in deviceSet) {
-        val existingVM = previousById[device.id.id]
-        val deviceVM = if (existingVM != null && existingVM.device.roomId == device.roomId) {
-          keptIds.add(device.id.id)
-          existingVM
-        } else {
-          DeviceViewModel(device = device)
-        }
-        newDeviceVMs.add(deviceVM)
-        // For any device that's not in a room, additionally keep track of a separate list:
-        if (device.roomId == null)
-          newDeviceWithoutRoomVMs.add(deviceVM)
-      }
-      previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
-      // Store the ViewModels:
-      this.deviceVMs.emit(newDeviceVMs)
-      deviceVMsWithoutRooms.emit(newDeviceWithoutRoomVMs)
-    }
+// TODO: 5.2.2 - Subscribe the device data changes in a structure
+//     // Subscribe to changes on devices based on Multifacet mode toggle:
+//     isMultifacetEnabled.flatMapLatest { enabled ->
+//       this.deviceVMs.value.forEach { it.clear() }
+//       this.deviceVMs.value = emptyList()
+//       structure.devices(enableMultipartDevices = enabled)
+//     }.collect { deviceSet ->
+//       val previousById = this.deviceVMs.value.associateBy { it.id }
+//       val newDeviceVMs = mutableListOf<DeviceViewModel>()
+//       val newDeviceWithoutRoomVMs = mutableListOf<DeviceViewModel>()
+//       val keptIds = mutableSetOf<String>()
+//       // Store devices in container ViewModels (reusing existing instances by device ID):
+//       for (device in deviceSet) {
+//         val existingVM = previousById[device.id.id]
+//         val deviceVM = if (existingVM != null && existingVM.device.roomId == device.roomId) {
+//           keptIds.add(device.id.id)
+//           existingVM
+//         } else {
+//           DeviceViewModel(device = device)
+//         }
+//         newDeviceVMs.add(deviceVM)
+//         // For any device that's not in a room, additionally keep track of a separate list:
+//         if (device.roomId == null)
+//           newDeviceWithoutRoomVMs.add(deviceVM)
+//       }
+//       previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
+//       // Store the ViewModels:
+//       this.deviceVMs.emit(newDeviceVMs)
+//       deviceVMsWithoutRooms.emit(newDeviceWithoutRoomVMs)
+//     }
   }
 
   private suspend fun subscribeToAutomations() {

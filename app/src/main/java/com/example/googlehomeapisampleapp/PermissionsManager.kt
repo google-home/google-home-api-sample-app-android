@@ -97,33 +97,34 @@ class PermissionsManager(
   ) {
     scope.launch {
       try {
-        // Use passed options or fallback to active structure ID
-        val optionsToUse = consentScreenOptions
-          ?: run {
-            val currentStructureId = currentStructureIdProvider?.invoke()
-            ConsentScreenOptions(
-              structureId = currentStructureId,
-              allowedStructureIds = emptyList(),
-              isAllowStructureChange = !currentStructureId.isNullOrEmpty()
-            )
-          }
-        // Request permissions using ForcePermissionFlow:
-        val result: PermissionsResult = client.requestPermissions(
-          ForcePermissionFlow.FORCE_LAUNCH,
-          consentScreenOptions = optionsToUse
-        )
-        // Adjust the sign-in status according to permission result:
-        if (result.status == PermissionsResultStatus.SUCCESS) {
-          Log.d(TAG, "PermissionsResultStatus.SUCCESS")
-        }
-        if (isForceRefresh) {
-          // When user request permission to change structure, the permission
-          // state won't change. So it is required to force emit a permission update event.
-          Log.i(TAG, "forceRefresh after requestPermissions")
-          _isPermissionUpdated.emit(Unit)
-        }
-        // Report the permission result:
-        reportPermissionResult(result)
+// TODO: 4.3.1 - Request the permissions from the Permissions API
+//         // Use passed options or fallback to active structure ID
+//         val optionsToUse = consentScreenOptions
+//           ?: run {
+//             val currentStructureId = currentStructureIdProvider?.invoke()
+//             ConsentScreenOptions(
+//               structureId = currentStructureId,
+//               allowedStructureIds = emptyList(),
+//               isAllowStructureChange = !currentStructureId.isNullOrEmpty()
+//             )
+//           }
+//         // Request permissions using ForcePermissionFlow:
+//         val result: PermissionsResult = client.requestPermissions(
+//           ForcePermissionFlow.FORCE_LAUNCH,
+//           consentScreenOptions = optionsToUse
+//         )
+//         // Adjust the sign-in status according to permission result:
+//         if (result.status == PermissionsResultStatus.SUCCESS) {
+//           Log.d(TAG, "PermissionsResultStatus.SUCCESS")
+//         }
+//         if (isForceRefresh) {
+//           // When user request permission to change structure, the permission
+//           // state won't change. So it is required to force emit a permission update event.
+//           Log.i(TAG, "forceRefresh after requestPermissions")
+//           _isPermissionUpdated.emit(Unit)
+//         }
+//         // Report the permission result:
+//         reportPermissionResult(result)
       } catch (e: HomeException) {
         MainActivity.showError(this, e.message.toString())
       }

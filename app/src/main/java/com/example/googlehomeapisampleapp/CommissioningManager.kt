@@ -199,35 +199,36 @@ class CommissioningManager(
     // Retrieve the onboarding payload from the Activity Intent *only* if the payload wasn't provided
     val activityIntentPayload = activity.intent?.getStringExtra(Matter.EXTRA_ONBOARDING_PAYLOAD)
 
-    scope.launch {
-      // Determine the final payload to use (prefers argument payload)
-      val finalPayload = payload ?: activityIntentPayload
-
-      // Create a commissioning request to store the device in Google's Fabric:
-      val builder = CommissioningRequest.builder()
-        .setOnboardingPayload(finalPayload)
-
-      when (fabricType) {
-        FabricType.GOOGLE_FABRIC, FabricType.GOOGLE_CAMERA -> {
-          builder.setStoreToGoogleFabric(true)
-        }
-
-        FabricType.THIRD_PARTY_FABRIC -> {
-          builder.setStoreToGoogleFabric(true)
-          builder.setCommissioningService(
-            ComponentName(context, ThirdPartyCommissioningService::class.java)
-          )
-        }
-      }
-
-      val request = builder.build()
-
-      // Initialize client and sender for commissioning intent:
-      val client: CommissioningClient = Matter.getCommissioningClient(context)
-      val sender: IntentSender = client.commissionDevice(request).await()
-      // Launch the commissioning intent on the launcher:
-      launcher.launch(IntentSenderRequest.Builder(sender).build())
-    }
+// TODO: 7.1.1 - Launch the commissioning intent
+//     scope.launch {
+//       // Determine the final payload to use (prefers argument payload)
+//       val finalPayload = payload ?: activityIntentPayload
+//
+//       // Create a commissioning request to store the device in Google's Fabric:
+//       val builder = CommissioningRequest.builder()
+//         .setOnboardingPayload(finalPayload)
+//
+//       when (fabricType) {
+//         FabricType.GOOGLE_FABRIC, FabricType.GOOGLE_CAMERA -> {
+//           builder.setStoreToGoogleFabric(true)
+//         }
+//
+//         FabricType.THIRD_PARTY_FABRIC -> {
+//           builder.setStoreToGoogleFabric(true)
+//           builder.setCommissioningService(
+//             ComponentName(context, ThirdPartyCommissioningService::class.java)
+//           )
+//         }
+//       }
+//
+//       val request = builder.build()
+//
+//       // Initialize client and sender for commissioning intent:
+//       val client: CommissioningClient = Matter.getCommissioningClient(context)
+//       val sender: IntentSender = client.commissionDevice(request).await()
+//       // Launch the commissioning intent on the launcher:
+//       launcher.launch(IntentSenderRequest.Builder(sender).build())
+//     }
   }
 
   private fun generateNewCommissioningData(): Pair<Long, Int> {

@@ -318,11 +318,14 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
           selectedByPartId
         }
 
-        val primaryType: DeviceType =
-          liveFacetTypes.firstOrNull { it.metadata.isPrimaryType }
-            ?: liveFacetTypes.firstOrNull()
-            ?: mainTypeSet.firstOrNull()
-            ?: UnknownDeviceType()
+        var primaryType: DeviceType = UnknownDeviceType()
+
+// TODO: 6.1.1 - Determine the primary type for this device
+//         primaryType =
+//           liveFacetTypes.firstOrNull { it.metadata.isPrimaryType }
+//             ?: liveFacetTypes.firstOrNull()
+//             ?: mainTypeSet.firstOrNull()
+//             ?: UnknownDeviceType()
 
         connectivity = primaryType.metadata.sourceConnectivity.connectivityState
 
@@ -413,6 +416,7 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
   fun getSupportedTraits(traits: Set<Trait>, allDeviceTypes: Set<DeviceType>, primaryType: DeviceType) : List<Trait> {
     val supportedTraits: MutableList<Trait> = mutableListOf()
 
+
     // FIX: Use the passed allDeviceTypes parameter instead of device.types().value
     // Check if this device is the whitelisted Onn camera
     val isWhitelistedCamera = allDeviceTypes.any { deviceType ->
@@ -422,25 +426,26 @@ class DeviceViewModel(val device: HomeDevice) : ViewModel() {
         deviceType.standardTraits.basicInformation?.productId?.toInt() == ONN_CAMERA_PID
     }
 
-    for (trait in traits) {
-      // 1. Check if the trait is in the general supported list
-      val isGenerallySupported = trait.factory in HomeModule_ProvideSupportedTraitsFactory().get()
-
-      // 2. Check if the device is the whitelisted camera AND the trait is WebRtcLiveView
-      val isCameraTraitOverride = isWhitelistedCamera && trait.factory == WebRtcLiveView
-
-      if (isGenerallySupported || isCameraTraitOverride)
-        supportedTraits.add(trait)
-    }
-    //For GoogleTVDevice, traits are sorted to ensure consistent order (OnOff first, MediaPlayback second).
-    // Sort traits only for GoogleTVDevice to ensure consistent UI order
-    if (primaryType.factory == GoogleTVDevice) {
-      val traitOrder: Map<TraitFactory<out Trait>, Int> = mapOf(
-        OnOff to 0,
-        MediaPlayback to 1
-      )
-      return supportedTraits.sortedBy { traitOrder[it.factory] ?: Int.MAX_VALUE }
-    }
+// TODO: 6.1.2 - Get only the supported traits for this device
+//     for (trait in traits) {
+//       // 1. Check if the trait is in the general supported list
+//       val isGenerallySupported = trait.factory in HomeModule_ProvideSupportedTraitsFactory().get()
+//
+//       // 2. Check if the device is the whitelisted camera AND the trait is WebRtcLiveView
+//       val isCameraTraitOverride = isWhitelistedCamera && trait.factory == WebRtcLiveView
+//
+//       if (isGenerallySupported || isCameraTraitOverride)
+//         supportedTraits.add(trait)
+//     }
+//     //For GoogleTVDevice, traits are sorted to ensure consistent order (OnOff first, MediaPlayback second).
+//     // Sort traits only for GoogleTVDevice to ensure consistent UI order
+//     if (primaryType.factory == GoogleTVDevice) {
+//       val traitOrder: Map<TraitFactory<out Trait>, Int> = mapOf(
+//         OnOff to 0,
+//         MediaPlayback to 1
+//       )
+//       return supportedTraits.sortedBy { traitOrder[it.factory] ?: Int.MAX_VALUE }
+//     }
 
     return supportedTraits
   }
