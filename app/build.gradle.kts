@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-  namespace = "com.ioconnect2026.googlehomeapisampleapp"
+  namespace = "com.example.googlehomeapisampleapp"
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.ioconnect2026.googlehomeapisampleapp"
+    applicationId = "com.example.googlehomeapisampleapp"
     minSdk = 29
     targetSdk = 36
     versionCode = 42
@@ -87,16 +87,33 @@ dependencies {
   implementation(libs.androidx.material3)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.play.services)
   // Home API SDK dependency:
   implementation(libs.play.services.home)
   implementation(libs.play.services.home.types)
-  // Dependency Injection
+  implementation(libs.play.services.auth)
+  // Dependency Injection & Camera
   implementation(libs.dagger.hilt.android)
   ksp(libs.hilt.android.compiler)
   implementation(libs.androidx.hilt.navigation.compose)
   ksp(libs.androidx.hilt.compiler)
+  implementation(libs.stream.webrtc.android)
+  implementation(libs.errorprone.annotations)
 
   // Google Auth
   implementation(libs.googleid)
   implementation(libs.androidx.credentials.play.services.auth)
+
+  // History Eventing
+  implementation(libs.androidx.paging.runtime.ktx)
+  implementation(libs.androidx.paging.compose)
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.exoplayer.dash)
+  implementation(libs.androidx.media3.exoplayer.hls)
+  implementation(libs.androidx.media3.ui)
+  implementation(libs.androidx.media3.datasource.okhttp)
 }
