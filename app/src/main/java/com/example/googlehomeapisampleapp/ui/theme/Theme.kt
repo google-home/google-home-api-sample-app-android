@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,38 +27,38 @@ import androidx.compose.ui.platform.LocalContext
 
 // Dark theme default color palette:
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+  primary = Purple80,
+  secondary = PurpleGrey80,
+  tertiary = Pink80
 )
 
 // Light theme default color palette:
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+  primary = Purple40,
+  secondary = PurpleGrey40,
+  tertiary = Pink40
 )
 
 @Composable
 fun GoogleHomeAPISampleAppTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit
+  darkTheme: Boolean = isSystemInDarkTheme(),
+  dynamicColor: Boolean = false,
+  content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        // If the dynamic color is set and the system supports it, apply dynamic colors:
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(LocalContext.current)
-            else dynamicLightColorScheme(LocalContext.current)
-        }
-        // Otherwise, apply a predefined scheme:
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+  val colorScheme = when {
+    // If the dynamic color is set and the system supports it, apply dynamic colors:
+    dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+      if (darkTheme) dynamicDarkColorScheme(LocalContext.current)
+      else dynamicLightColorScheme(LocalContext.current)
     }
-    // Apply the selected values on theme:
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    // Otherwise, apply a predefined scheme:
+    darkTheme -> DarkColorScheme
+    else -> LightColorScheme
+  }
+  // Apply the selected values on theme:
+  MaterialTheme(
+    colorScheme = colorScheme,
+    typography = Typography,
+    content = content
+  )
 }

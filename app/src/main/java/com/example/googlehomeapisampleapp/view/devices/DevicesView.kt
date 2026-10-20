@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +15,12 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.view.devices
 
+import android.content.Intent
+import android.util.Log
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +35,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -41,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,159 +58,444 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
+import com.example.googlehomeapisampleapp.FabricType
 import com.example.googlehomeapisampleapp.R
 import com.example.googlehomeapisampleapp.view.shared.TabbedMenuView
 import com.example.googlehomeapisampleapp.viewmodel.HomeAppViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+const val TAG = "DevicesView"
+
+/**
+ * Composable for displaying the account button and overflow menu in the Devices view.
+ *
+ * @param homeAppVM The [HomeAppViewModel] providing the data and logic.
+ * @param onNavigateToUserManagement Callback to navigate to the User Management screen.
+ */
 @Composable
-fun DevicesAccountButton (homeAppVM: HomeAppViewModel) {
-    IconButton(onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions() },
-            Modifier.size(48.dp).background(Color.Transparent)) {
-        Icon(Icons.Default.AccountCircle,"", Modifier.fillMaxSize(), tint = MaterialTheme.colorScheme.primary)
+fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
+                         onNavigateToUserManagement: () -> Unit = {},
+                         onNavigateToPresenceSettings: () -> Unit = {}
+) {
+  val context = LocalContext.current
+  var expanded by remember { mutableStateOf(false) }
+  /**
+   * UI Row containing:
+   * - Account Icon Button: triggers a permission request using PermissionsManager.
+   * - Overflow Menu: opens a dropdown with a "Revoke Permissions" option.
+   *
+   * Selecting "Revoke Permissions" launches an intent to Google’s account management page for
+   * manually revoking app access.
+   */
+  Row {
+    IconButton(
+      onClick = { homeAppVM.homeApp.permissionsManager.requestPermissions(isForceRefresh = true) },
+      modifier = Modifier.size(48.dp).background(Color.Transparent),
+    ) {
+      Icon(
+        imageVector = Icons.Default.AccountCircle,
+        contentDescription = "",
+        modifier = Modifier.fillMaxSize(),
+        tint = MaterialTheme.colorScheme.primary,
+      )
     }
+
+    IconButton(onClick = { expanded = true }) {
+      Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+    }
+
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+      DropdownMenuItem(
+        text = { Text("Revoke Permissions") },
+        onClick = {
+          expanded = false
+          val intent =
+            Intent(
+              Intent.ACTION_VIEW,
+              "https://myaccount.google.com/u/2/connections?utm_source=3p".toUri(),
+            )
+          context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        },
+      )
+      DropdownMenuItem(
+        text = { Text("Google Sign-In") },
+        onClick = { homeAppVM.signInWithGoogleAccount(context) },
+      )
+      DropdownMenuItem(
+        text = { Text("Link GHP Playground") },
+        onClick = {
+          expanded = false
+          homeAppVM.openCloudLinkingSheet()
+        },
+      )
+      DropdownMenuItem(
+        text = { Text("User Management") },
+        onClick = {
+          expanded = false
+          onNavigateToUserManagement()
+        }
+      )
+      DropdownMenuItem(
+        text = { Text("Presence Settings") },
+        onClick = {
+          expanded = false
+          onNavigateToPresenceSettings()
+        }
+      )
+      val isMultifacetEnabled by homeAppVM.isMultifacetEnabled.collectAsStateWithLifecycle()
+      DropdownMenuItem(
+        text = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+              checked = isMultifacetEnabled,
+              onCheckedChange = null // Handled by DropdownMenuItem onClick
+            )
+            Text("Multifacet Mode", modifier = Modifier.padding(start = 8.dp))
+          }
+        },
+        onClick = {
+          homeAppVM.setMultifacetEnabled(!isMultifacetEnabled)
+        }
+      )
+    }
+  }
 }
 
+/**
+ * Composable for displaying the Devices view, which shows a list of structures and devices.
+ *
+ * @param homeAppVM The [HomeAppViewModel] providing the data and logic.
+ * @param onRequestCreateRoom Callback for requesting to create a new room.
+ * @param onRequestRoomSettings Callback for requesting to view/edit room settings.
+ * @param onRequestMoveDevice Callback for requesting to move a device to a different room.
+ * @param onRequestAddHub Callback for requesting to add a new hub.
+ * @param onNavigateToUserManagement Callback to navigate to the User Management screen.
+ */
 @Composable
-fun DevicesView (homeAppVM: HomeAppViewModel) {
-    val scope: CoroutineScope = rememberCoroutineScope()
-    var expanded: Boolean by remember { mutableStateOf(false) }
+fun DevicesView(
+  homeAppVM: HomeAppViewModel,
+  onRequestCreateRoom: () -> Unit = {},
+  onRequestRoomSettings: (RoomViewModel) -> Unit = {},
+  onRequestMoveDevice: (DeviceViewModel) -> Unit = {},
+  onRequestAddHub: () -> Unit = {},
+  onSearchHome: () -> Unit = {},
+  onNavigateToUserManagement: () -> Unit = {},
+  onNavigateToPresenceSettings: () -> Unit = {},
+) {
+  val scope: CoroutineScope = rememberCoroutineScope()
 
-    val structureVMs: List<StructureViewModel> = homeAppVM.structureVMs.collectAsState().value
-    val selectedStructureVM: StructureViewModel? = homeAppVM.selectedStructureVM.collectAsState().value
-    val structureName: String = selectedStructureVM?.name ?: stringResource(R.string.devices_structure_loading)
+  val structureVMs: List<StructureViewModel> = homeAppVM.structureVMs.collectAsState().value
+  val selectedStructureVM: StructureViewModel? =
+    homeAppVM.selectedStructureVM.collectAsState().value
+  val structureName: String =
+    selectedStructureVM?.name ?: stringResource(R.string.devices_structure_loading)
 
-    Column (modifier = Modifier.fillMaxHeight()) {
-        DevicesTopBar("", listOf { DevicesAccountButton(homeAppVM) })
+  var structurePickerExpanded by remember { mutableStateOf(false) }
+  var plusMenuExpanded by remember { mutableStateOf(false) }
 
-        Box (modifier = Modifier.weight(1f)) {
+  var isCommissioningMenuVisible by remember { mutableStateOf(false) }
 
-            Column {
-                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    var structureText: String = structureName
-
-                    if (structureVMs.size > 1)
-                        structureText += " ▾"
-
-                    TextButton(onClick = { expanded = true }) {
-                        Text(text = structureText, fontSize = 32.sp)
-                    }
-                }
-
-                Row (horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    Box {
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-// TODO: 5.1.2 - Show list of structures in DropdownMenu
-//                             for (structure in structureVMs) {
-//                                 DropdownMenuItem(
-//                                     text = { Text(structure.name) },
-//                                     onClick = {
-//                                         scope.launch { homeAppVM.selectedStructureVM.emit(structure) }
-//                                         expanded = false
-//                                     }
-//                                 )
-//                             }
-                        }
-                    }
-                }
-
-                Column(modifier = Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)) {
-                    DeviceListComponent(homeAppVM)
-                }
+  Column(modifier = Modifier.fillMaxHeight()) {
+    DevicesTopBar(
+      title = "",
+      leftButton = {
+        IconButton(onClick = { plusMenuExpanded = true }) {
+          Icon(Icons.Default.Add, contentDescription = "Add")
+        }
+        DropdownMenu(expanded = plusMenuExpanded, onDismissRequest = { plusMenuExpanded = false }) {
+          DropdownMenuItem(
+            text = { Text("Add Room") },
+            onClick = {
+              plusMenuExpanded = false
+              onRequestCreateRoom()
+            },
+          )
+          DropdownMenuItem(
+            text = { Text("Add Hub") },
+            onClick = {
+              plusMenuExpanded = false
+              onRequestAddHub()
+            },
+          )
+        }
+      },
+      rightButtons =
+        listOf(
+          {
+            IconButton(onClick = onSearchHome, enabled = selectedStructureVM != null) {
+              Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "Search Home")
             }
+          },
+          { DevicesAccountButton(homeAppVM, onNavigateToUserManagement, onNavigateToPresenceSettings) },
+        ),
+    )
 
-            Button(
-                onClick = { homeAppVM.homeApp.commissioningManager.requestCommissioning() },
-                modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) {
-                        Text(stringResource(R.string.devices_button_add)) }
-
+    Box(modifier = Modifier.weight(1f)) {
+      Column {
+        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+          if (structureVMs.size > 1) {
+            TextButton(onClick = { structurePickerExpanded = true }) {
+              Text(text = "$structureName ▾", fontSize = 32.sp)
+            }
+          } else {
+            TextButton(onClick = { structurePickerExpanded = true }) {
+              Text(text = structureName, fontSize = 32.sp)
+            }
+          }
         }
 
-        TabbedMenuView(homeAppVM)
+        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+          Box {
+            DropdownMenu(
+              expanded = structurePickerExpanded,
+              onDismissRequest = { structurePickerExpanded = false },
+            ) {
+// TODO: 5.1.2 - Show list of structures in DropdownMenu
+//               for (structure in structureVMs) {
+//                 val presence by structure.presenceState.collectAsState()
+//                 DropdownMenuItem(
+//                   text = { Text("${structure.name} ($presence)") },
+//                   onClick = {
+//                     homeAppVM.setSelectedStructure(structure)
+//                     structurePickerExpanded = false
+//                   },
+//                 )
+//               }
+            }
+          }
+        }
+
+        Column(
+          modifier =
+            Modifier.verticalScroll(rememberScrollState()).weight(weight = 1f, fill = false)
+        ) {
+          DeviceListComponent(
+            homeAppVM = homeAppVM,
+            onRoomClick = onRequestRoomSettings,
+            onDeviceLongPress = onRequestMoveDevice,
+          )
+        }
+      }
+
+      Box(modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd)) {
+        Button(onClick = { isCommissioningMenuVisible = true }) {
+          Text(stringResource(R.string.devices_button_add))
+        }
+        DropdownMenu(
+          expanded = isCommissioningMenuVisible,
+          onDismissRequest = { isCommissioningMenuVisible = false },
+        ) {
+          DropdownMenuItem(
+            text = { Text("Add Device to Google Fabric Only") },
+            onClick = {
+              isCommissioningMenuVisible = false
+              homeAppVM.homeApp.commissioningManager.requestCommissioning(FabricType.GOOGLE_FABRIC)
+            },
+          )
+          DropdownMenuItem(
+            text = { Text("Add Device to Google & 3P Fabric") },
+            onClick = {
+              isCommissioningMenuVisible = false
+              homeAppVM.homeApp.commissioningManager.requestCommissioning(
+                FabricType.THIRD_PARTY_FABRIC
+              )
+            },
+          )
+          DropdownMenuItem(
+            text = { Text("Add Google Camera") },
+            onClick = {
+              isCommissioningMenuVisible = false
+              homeAppVM.onCommissionCamera()
+            },
+          )
+        }
+      }
     }
+
+    TabbedMenuView(homeAppVM)
+  }
 }
 
+/**
+ * Composable for displaying a single device item in a list.
+ *
+ * @param deviceVM The [DeviceViewModel] for the device.
+ * @param homeAppVM The [HomeAppViewModel] for navigation.
+ * @param onLongPress Callback for when the device item is long-pressed.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DeviceListItem (deviceVM: DeviceViewModel, homeAppVM: HomeAppViewModel) {
-    val scope: CoroutineScope = rememberCoroutineScope()
-    val deviceStatus: String = deviceVM.status.collectAsState().value
+fun DeviceListItem(
+  deviceVM: DeviceViewModel,
+  homeAppVM: HomeAppViewModel,
+  onLongPress: (DeviceViewModel) -> Unit,
+) {
+  val scope: CoroutineScope = rememberCoroutineScope()
+  val deviceStatus: String = deviceVM.status.collectAsState().value
+  val deviceName: String = deviceVM.name.collectAsState().value
 
-    Column (Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth()
-        .clickable { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } }) {
-        Text(deviceVM.name, fontSize = 20.sp)
-        Text(deviceStatus, fontSize = 16.sp)
+  val currentOtaUiState by homeAppVM.otaUiState.collectAsStateWithLifecycle(OtaUiState.Loading)
+  val activeOtaDeviceId by homeAppVM.otaDeviceId.collectAsStateWithLifecycle()
+  val activeOtaDeviceIds by homeAppVM.otaDeviceIds.collectAsStateWithLifecycle()
+
+  val isThisDeviceUpdating = deviceVM.id == activeOtaDeviceId || activeOtaDeviceIds.contains(deviceVM.id)
+  val otaUiState = if (isThisDeviceUpdating) currentOtaUiState else OtaUiState.UpToDate()
+
+  LaunchedEffect(otaUiState) {
+    if (otaUiState is OtaUiState.Downloading || otaUiState is OtaUiState.Installing) {
+      Log.d("DevicesView", "DeviceListItem $deviceName active OTA state: $otaUiState")
     }
+  }
+
+  Column(
+    Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+      .fillMaxWidth()
+      .combinedClickable(
+        onClick = { scope.launch { homeAppVM.selectedDeviceVM.emit(deviceVM) } },
+        onLongClick = { onLongPress(deviceVM) },
+      )
+  ) {
+    Text(deviceName, fontSize = 20.sp)
+    Text(deviceStatus, fontSize = 16.sp)
+    when (val state = otaUiState) {
+      is OtaUiState.Downloading -> {
+        val progress = state.progressPercent
+        Text(
+          text = if (progress != null) "Updating $progress%" else "Updating...",
+          fontSize = 12.sp,
+          color = MaterialTheme.colorScheme.primary
+        )
+      }
+      is OtaUiState.Installing -> {
+        Text(
+          text = "Installing...",
+          fontSize = 12.sp,
+          color = MaterialTheme.colorScheme.primary
+        )
+      }
+      else -> {}
+    }
+  }
 }
 
+/**
+ * Composable for displaying a single room item in a list.
+ *
+ * @param roomVM The [RoomViewModel] for the room.
+ * @param onClick Callback for when the room item is clicked.
+ */
 @Composable
-fun RoomListItem (roomVM: RoomViewModel) {
-    Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-        Text(roomVM.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+fun RoomListItem(roomVM: RoomViewModel, onClick: (RoomViewModel) -> Unit) {
+  val roomName by roomVM.name.collectAsState()
+
+  Column(
+    Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clickable {
+      onClick(roomVM)
     }
+  ) {
+    Text(roomName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+  }
 }
 
+/**
+ * Composable for displaying a list of devices, grouped by rooms.
+ *
+ * @param homeAppVM The [HomeAppViewModel] providing the data.
+ * @param onRoomClick Callback for when a room is clicked.
+ * @param onDeviceLongPress Callback for when a device is long-pressed.
+ */
 @Composable
-fun DeviceListComponent (homeAppVM: HomeAppViewModel) {
+fun DeviceListComponent(
+  homeAppVM: HomeAppViewModel,
+  onRoomClick: (RoomViewModel) -> Unit,
+  onDeviceLongPress: (DeviceViewModel) -> Unit,
+) {
+  val selectedStructureVM: StructureViewModel =
+    homeAppVM.selectedStructureVM.collectAsState().value ?: return
 
-    val selectedStructureVM: StructureViewModel =
-        homeAppVM.selectedStructureVM.collectAsState().value ?: return
+  val selectedRoomVMs: List<RoomViewModel> = selectedStructureVM.roomVMs.collectAsState().value
 
-    val selectedRoomVMs: List<RoomViewModel> =
-        selectedStructureVM.roomVMs.collectAsState().value
+  val selectedDeviceVMsWithoutRooms: List<DeviceViewModel> =
+    selectedStructureVM.deviceVMsWithoutRooms.collectAsState().value
 
-    val selectedDeviceVMsWithoutRooms: List<DeviceViewModel> =
-        selectedStructureVM.deviceVMsWithoutRooms.collectAsState().value
-
-
+  Column {
     for (roomVM in selectedRoomVMs) {
 // TODO: 5.2.3 - Render the list of rooms
-//         RoomListItem(roomVM)
+//       RoomListItem(roomVM, onClick = onRoomClick)
 
 // TODO: 5.2.4 - Render the list of devices in a room
-//         val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
+//       val deviceVMsInRoom: List<DeviceViewModel> = roomVM.deviceVMs.collectAsState().value
 //
-//         for (deviceVM in deviceVMsInRoom) {
-//             DeviceListItem(deviceVM, homeAppVM)
-//         }
+//       for (deviceVM in deviceVMsInRoom) {
+//         DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
+//       }
     }
 
     if (selectedDeviceVMsWithoutRooms.isNotEmpty()) {
 
-        Column (Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-            Text("Not in a room", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        }
+      Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+        Text("Not in a room", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+      }
 
-        for (deviceVM in selectedDeviceVMsWithoutRooms) {
-            DeviceListItem(deviceVM, homeAppVM)
-        }
-
+      for (deviceVM in selectedDeviceVMsWithoutRooms) {
+        DeviceListItem(deviceVM, homeAppVM, onLongPress = onDeviceLongPress)
+      }
     }
-
+  }
 }
 
+/**
+ * Composable for displaying the top bar of the Devices view.
+ *
+ * @param title The title to display in the top bar.
+ * @param leftButton Optional Composable for a button on the left side of the top bar.
+ * @param rightButtons List of Composable for buttons on the right side of the top bar.
+ */
 @Composable
-fun DevicesTopBar (title: String, buttons: List<@Composable () -> Unit>) {
-    Box (Modifier.height(64.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
-        Row (Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center) {
-            Text(title, fontSize = 24.sp)
-        }
-
-        Row (Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End) {
-            for (button in buttons) {
-                button()
-            }
-        }
+fun DevicesTopBar(
+  title: String,
+  leftButton: (@Composable () -> Unit)? = null,
+  rightButtons: List<@Composable () -> Unit>,
+) {
+  Box(Modifier.height(64.dp).fillMaxWidth().padding(horizontal = 16.dp)) {
+    if (leftButton != null) {
+      Row(
+        Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Start,
+      ) {
+        leftButton()
+      }
     }
+
+    Row(
+      Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.Center,
+    ) {
+      Text(title, fontSize = 24.sp)
+    }
+
+    Row(
+      Modifier.height(64.dp).fillMaxWidth().background(Color.Transparent),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.End,
+    ) {
+      for (button in rightButtons) {
+        button()
+      }
+    }
+  }
 }

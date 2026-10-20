@@ -2,23 +2,78 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <application
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.GoogleHomeAPISampleApp"
-        tools:targetApi="31">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.GoogleHomeAPISampleApp">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
+  <uses-sdk />
 
+  <application
+  android:name=".HomeApplication"
+  android:icon="@mipmap/ic_launcher"
+  android:label="@string/app_name"
+  android:roundIcon="@mipmap/ic_launcher_round"
+  android:supportsRtl="true"
+  android:theme="@style/Theme.GoogleHomeAPISampleApp"
+  tools:targetApi="31">
+  <meta-data
+  android:name="androidx.lifecycle.ProcessLifecycleOwnerInitializer"
+  android:value="androidx.startup" />
+
+  <activity
+  android:name=".MainActivity"
+  android:exported="true"
+  android:theme="@style/Theme.GoogleHomeAPISampleApp"
+  android:windowSoftInputMode="adjustResize"
+  android:launchMode="singleTop">
+
+    <intent-filter>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent-filter>
+    <intent-filter>
+      <action android:name="com.google.android.gms.home.matter.ACTION_START_COMMISSIONING" />
+      <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="googlehomeapisampleapp" android:host="oauth-callback" />
+    </intent-filter>
+    <!-- TODO: Revert/remove this staging redirect intent filter in the future. -->
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="https" android:host="oauth-redirect.googleusercontent.com" android:pathPrefix="/r/smarthome-playground-staging" />
+    </intent-filter>
+    </activity>
+
+    <activity
+      android:name=".AccountSwitchProxyActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    <service
+      android:name=".commissioning.ThirdPartyCommissioningService"
+      android:exported="true"
+      android:enabled="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.home.matter.commissioning.COMMISSION_DEVICE_TO_3P_FABRIC" />
+      </intent-filter>
+    </service>
+  </application>
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="com.google.android.gms.permission.BIND_COMMISSIONING_SERVICE" />
+  <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+  <!-- Required by webRTC library-->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.CAMERA" />
+
+  <uses-feature
+    android:name="android.hardware.camera"
+    android:required="false" />
 </manifest>

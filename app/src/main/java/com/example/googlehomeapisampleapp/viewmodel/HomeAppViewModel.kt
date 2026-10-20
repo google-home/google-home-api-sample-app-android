@@ -1,4 +1,3 @@
-
 /* Copyright 2025 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,156 +15,1109 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.viewmodel
 
+import android.accounts.Account
+import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.MutableState
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.filter
+import androidx.paging.insertSeparators
+import androidx.paging.map
+import com.example.googlehomeapisampleapp.BuildConfig
+import com.example.googlehomeapisampleapp.FabricType
 import com.example.googlehomeapisampleapp.HomeApp
+import com.example.googlehomeapisampleapp.HomeModule_ProvideSupportedTraitsFactory
 import com.example.googlehomeapisampleapp.MainActivity
+import com.example.googlehomeapisampleapp.cloudlinking.CurrentStructureRepository
+import com.example.googlehomeapisampleapp.history.HistoryDeviceTypeFilter
+import com.example.googlehomeapisampleapp.history.HistoryEventUi
+import com.example.googlehomeapisampleapp.history.HistoryUiDataModel
+import com.example.googlehomeapisampleapp.history.HomeBriefCameraEvent
+import com.example.googlehomeapisampleapp.history.HomeHistoryPagingSource
+import com.example.googlehomeapisampleapp.history.toApiFilter
+import com.example.googlehomeapisampleapp.history.toUiDataModel
+import com.example.googlehomeapisampleapp.repository.AutomationsRepository
 import com.example.googlehomeapisampleapp.viewmodel.automations.ActionViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.AutomationViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.CandidateViewModel
 import com.example.googlehomeapisampleapp.viewmodel.automations.DraftViewModel
 import com.example.googlehomeapisampleapp.viewmodel.devices.DeviceViewModel
+import com.example.googlehomeapisampleapp.viewmodel.hubs.HubDiscoveryViewModel
+import com.example.googlehomeapisampleapp.viewmodel.structures.RoomViewModel
 import com.example.googlehomeapisampleapp.viewmodel.structures.StructureViewModel
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.home.HistoryFilter
+import com.google.home.HomeBriefsPage
 import com.google.home.Structure
+import com.google.home.featureConsentStatus
+import com.google.home.ConsentStatus
+import com.google.home.annotation.HomeExperimentalApi
 import com.google.home.automation.CommandCandidate
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestor
+import com.google.home.matter.standard.OtaSoftwareUpdateRequestorTrait.UpdateStateEnum
 import com.google.home.automation.DraftAutomation
 import com.google.home.automation.NodeCandidate
 import com.google.home.automation.UnknownDeviceType
+import com.google.home.getHistoryManager
+import com.google.home.getHomeBriefsManager
+import com.google.home.matter.standard.OtaRequestorDevice
+import com.google.home.userPresenceSettings
+import com.google.home.deleteHistory
+import com.google.home.google.AreaAttendanceState
+import com.google.home.google.AreaAttendanceStateTrait
+import com.google.home.google.AreaPresenceState
+import com.google.home.google.AreaPresenceStateTrait
+import com.google.home.google.UserPresenceSettings
+import com.google.home.google.UserPresenceSettingsTrait
+import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
+import com.example.googlehomeapisampleapp.viewmodel.ota.mapUpdateStateToUiState
+import com.google.home.matter.standard.BasicInformation
+import com.google.home.matter.standard.RootNodeDevice
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
-class HomeAppViewModel (val homeApp: HomeApp) : ViewModel() {
+private data class HistoryQueryState(
+    val structureId: String,
+    val deviceId: String?,
+    val deviceTypeFilter: HistoryDeviceTypeFilter,
+)
 
-    // Tabs showing main capabilities of the app:
-    enum class NavigationTab {
-        DEVICES,
-        AUTOMATIONS
-    }
+class HomeAppViewModel(
+  val homeApp: HomeApp,
+  val currentStructureRepository: CurrentStructureRepository,
+) : ViewModel() {
 
-    // Container tracking the active navigation tab:
-    var selectedTab : MutableStateFlow<NavigationTab>
+  // Tabs showing main capabilities of the app:
+  enum class NavigationTab {
+    DEVICES,
+    AUTOMATIONS,
+    HISTORY,
+  }
 
-    // Containers tracking the active object being edited:
-    var selectedStructureVM: MutableStateFlow<StructureViewModel?>
-    var selectedDeviceVM: MutableStateFlow<DeviceViewModel?>
-    var selectedAutomationVM: MutableStateFlow<AutomationViewModel?>
-    var selectedDraftVM: MutableStateFlow<DraftViewModel?>
-    var selectedCandidateVMs: MutableStateFlow<List<CandidateViewModel>?>
+  companion object {
+    const val TAG = "HomeAppViewModel"
+    private const val FEATURE_PRESENCE_SENSING_NAME = "FEATURE_PRESENCE_SENSING"
+    private const val FEATURE_PRESENCE_SENSING_ID = 3L
+    private const val OTA_TIMEOUT_MILLIS = 20 * 60 * 1000L
+  }
 
-    // Container to store returned structures from the app:
-    var structureVMs: MutableStateFlow<List<StructureViewModel>>
+  // Container tracking the active navigation tab:
+  var selectedTab: MutableStateFlow<NavigationTab> = MutableStateFlow(NavigationTab.DEVICES)
 
-    init {
-        // Initialize the active tab to show the devices:
-        selectedTab = MutableStateFlow(NavigationTab.DEVICES)
+  private val _showQrCodeScanner = MutableStateFlow(false)
+  val showQrCodeScanner = _showQrCodeScanner.asStateFlow()
 
-        // Initialize containers storing active objects:
-        selectedStructureVM = MutableStateFlow(null)
-        selectedDeviceVM = MutableStateFlow(null)
-        selectedAutomationVM = MutableStateFlow(null)
-        selectedDraftVM = MutableStateFlow(null)
-        selectedCandidateVMs = MutableStateFlow(null)
+  private val _showCloudLinkingSheet = MutableStateFlow(false)
+  val showCloudLinkingSheet = _showCloudLinkingSheet.asStateFlow()
 
-        // Initialize the container to store structures:
-        structureVMs = MutableStateFlow(mutableListOf())
+  fun openCloudLinkingSheet() {
+    _showCloudLinkingSheet.value = true
+  }
 
-        viewModelScope.launch {
-            // If permissions flow is completed, subscribe to changes on structures:
-            if (homeApp.permissionsManager.isSignedIn.value) {
-                launch { subscribeToStructures() }
+  fun closeCloudLinkingSheet() {
+    _showCloudLinkingSheet.value = false
+  }
+
+  // Global toggle for Multifacet / Multipart device mode
+  private val _isMultifacetEnabled = MutableStateFlow(false)
+  val isMultifacetEnabled: StateFlow<Boolean> = _isMultifacetEnabled.asStateFlow()
+
+  fun setMultifacetEnabled(enabled: Boolean) {
+    _isMultifacetEnabled.value = enabled
+  }
+
+  // OTA Screen State Management
+  /**
+   * State flow for showing the OTA information screen after camera commissioning. True when OTA
+   * screen should be shown, false otherwise.
+   */
+  private val _showOtaScreen = MutableStateFlow(false)
+  val showOtaScreen: StateFlow<Boolean> = _showOtaScreen
+
+  private val _otaUiState = MutableStateFlow<OtaUiState>(OtaUiState.Loading)
+  val otaUiState: StateFlow<OtaUiState> = _otaUiState
+
+  private val _otaDeviceName = MutableStateFlow<String>("Device")
+  val otaDeviceName: StateFlow<String> = _otaDeviceName
+
+  private val _otaDeviceId = MutableStateFlow<String?>(null)
+  val otaDeviceId: StateFlow<String?> = _otaDeviceId
+
+  private val _otaDeviceIds = MutableStateFlow<List<String>>(emptyList())
+  val otaDeviceIds: StateFlow<List<String>> = _otaDeviceIds
+
+  private var otaJob: Job? = null
+
+  // Containers tracking the active object being edited:
+  val selectedStructureVM: StateFlow<StructureViewModel?> =
+    currentStructureRepository.selectedStructureVM
+
+  private val _presenceRefreshTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  fun refreshPresenceSettings() {
+    _presenceRefreshTrigger.tryEmit(Unit)
+  }
+
+  private val _resolvedConsentStatus = MutableStateFlow<ConsentStatus>(ConsentStatus.UNSPECIFIED)
+
+  @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
+  val selectedStructureFeatureConsentStatus: StateFlow<ConsentStatus> =
+    combine(
+      selectedStructureVM.filterNotNull(),
+      _presenceRefreshTrigger.onStart { emit(Unit) }
+    ) { structureVM, _ -> structureVM }
+      .flatMapLatest { structureVM ->
+        structureVM.structure.featureConsentStatus()
+          .map { consentMap ->
+            val entry = consentMap.entries.find {
+              it.key.id.toLong() == FEATURE_PRESENCE_SENSING_ID ||
+              it.key.name == FEATURE_PRESENCE_SENSING_NAME
             }
-            // If permissions flow is completed in the future, subscribe to changes on structures:
-            homeApp.permissionsManager.isSignedIn.collect { isSignedIn ->
-                if (isSignedIn) {
-                    launch { subscribeToStructures() }
+            entry?.value ?: ConsentStatus.UNSPECIFIED
+          }
+          .catch { e ->
+            Log.w("HomeAppViewModel", "featureConsentStatus flow error: ${e.message}")
+            emit(ConsentStatus.UNSPECIFIED)
+          }
+          .scan(_resolvedConsentStatus.value) { previousStatus, rawStatus ->
+            val resolvedStatus = when (rawStatus) {
+              ConsentStatus.CONSENTED, ConsentStatus.NOT_CONSENTED -> rawStatus
+              ConsentStatus.UNSPECIFIED -> {
+                if (previousStatus != ConsentStatus.UNSPECIFIED) {
+                  previousStatus
+                } else {
+                  ConsentStatus.UNSPECIFIED
                 }
+              }
             }
-        }
+            _resolvedConsentStatus.value = resolvedStatus
+            resolvedStatus
+          }
+      }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConsentStatus.UNSPECIFIED)
+
+  @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
+  val selectedStructureUserPresenceSettings: StateFlow<UserPresenceSettings?> =
+    combine(
+      selectedStructureVM,
+      selectedStructureFeatureConsentStatus
+    ) { structureVM, consentStatus ->
+      Pair(structureVM, consentStatus)
     }
-
-    private suspend fun subscribeToStructures() {
-// TODO: 5.1.1 - Subscribe the structure data changes
-//         // Subscribe to structures returned by the Structures API:
-//         homeApp.homeClient.structures().collect { structureSet ->
-//             val structureVMList: MutableList<StructureViewModel> = mutableListOf()
-//             // Store structures in container ViewModels:
-//             for (structure in structureSet) {
-//                 structureVMList.add(StructureViewModel(structure))
-//             }
-//             // Store the ViewModels:
-//             structureVMs.emit(structureVMList)
-//
-//             // If a structure isn't selected yet, select the first structure from the list:
-//             if (selectedStructureVM.value == null && structureVMList.isNotEmpty())
-//                 selectedStructureVM.emit(structureVMList.first())
-//
-//         }
-    }
-
-    fun showCandidates() {
-        viewModelScope.launch {
-            val candidateVMList: MutableList<CandidateViewModel> = mutableListOf()
-
-            // Retrieve automation candidates for every device present in the selected structure:
-            for (deviceVM in selectedStructureVM.value!!.deviceVMs.value) {
-
-                // Check whether the device has a known type:
-                if(deviceVM.type.value is UnknownDeviceType)
-                    continue
-
-                // Retrieve a set of initial automation candidates from the device:
-                val candidates: Set<NodeCandidate> = deviceVM.device.candidates().first()
-
-                for (candidate in candidates) {
-                    // Check whether the candidate trait is supported:
-                    if(candidate.trait !in HomeApp.supportedTraits)
-                        continue
-                    // Check whether the candidate type is supported:
-                    when (candidate) {
-                        // Command candidate type:
-                        is CommandCandidate -> {
-                            // Check whether the command candidate has a supported command:
-                            if (candidate.commandDescriptor !in ActionViewModel.commandMap)
-                                continue
-                        }
-                        // Other candidate types are currently unsupported:
-                        else -> { continue }
-                    }
-
-                    candidateVMList.add(CandidateViewModel(candidate, deviceVM))
-                }
+      .flatMapLatest { (structureVM, consentStatus) ->
+        if (structureVM != null && consentStatus == ConsentStatus.CONSENTED) {
+          structureVM.structure.userPresenceSettings()
+            .catch<UserPresenceSettings?> { e ->
+              Log.w("HomeAppViewModel", "UserPresenceSettings flow error: ${e.message}")
+              emit(null)
             }
-
-            // Store the ViewModels:
-            selectedCandidateVMs.emit(candidateVMList)
+        } else {
+          flowOf(null)
         }
+      }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val selectedStructureAreaPresenceState: StateFlow<AreaPresenceState?> =
+    combine(
+      selectedStructureVM,
+      selectedStructureFeatureConsentStatus
+    ) { structureVM, consentStatus ->
+      Pair(structureVM, consentStatus)
     }
+      .flatMapLatest { (structureVM, consentStatus) ->
+        if (structureVM != null && consentStatus == ConsentStatus.CONSENTED) {
+          structureVM.structure.trait(AreaPresenceState)
+            .catch<AreaPresenceState?> { e ->
+              Log.w("HomeAppViewModel", "AreaPresenceState flow error: ${e.message}")
+              emit(null)
+            }
+        } else {
+          flowOf(null)
+        }
+      }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    fun createAutomation(isPending: MutableState<Boolean>) {
-        viewModelScope.launch {
-            val structure : Structure = selectedStructureVM.value?.structure!!
-            val draft : DraftAutomation = selectedDraftVM.value?.getDraftAutomation()!!
-            isPending.value = true
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val selectedStructureAreaAttendanceState: StateFlow<AreaAttendanceState?> =
+    combine(
+      selectedStructureVM,
+      selectedStructureFeatureConsentStatus
+    ) { structureVM, consentStatus ->
+      Pair(structureVM, consentStatus)
+    }
+      .flatMapLatest { (structureVM, consentStatus) ->
+        if (structureVM != null && consentStatus == ConsentStatus.CONSENTED) {
+          structureVM.structure.trait(AreaAttendanceState)
+            .catch<AreaAttendanceState?> { e ->
+              Log.w("HomeAppViewModel", "AreaAttendanceState flow error: ${e.message}")
+              emit(null)
+            }
+        } else {
+          flowOf(null)
+        }
+      }
+      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-            // Call Automations API to create an automation from a draft:
+  fun setPresenceOptIn(optIn: Boolean) {
+    val structure = selectedStructureVM.value?.structure ?: return
+    viewModelScope.launch {
+      try {
+        val consentStatus = selectedStructureFeatureConsentStatus.value
+        if (optIn) {
+          if (consentStatus != ConsentStatus.CONSENTED) {
             try {
-                structure.createAutomation(draft)
-            }
-            catch (e: Exception) {
-                MainActivity.showError(this, e.toString())
-                isPending.value = false
+              val result = homeApp.homeClient.updateFeatureConsent(
+                listOf(com.google.home.FeatureConsentType(FEATURE_PRESENCE_SENSING_NAME, FEATURE_PRESENCE_SENSING_ID.toInt())),
+                structure.id.id
+              )
+              refreshPresenceSettings()
+              if (!result.granted) {
                 return@launch
+              }
+            } catch (e: Exception) {
+              Log.w("HomeAppViewModel", "Feature consent request failed: ${e.message}")
+              refreshPresenceSettings()
+              return@launch
             }
+          }
+        } else {
+          if (consentStatus == ConsentStatus.CONSENTED) {
+            try {
+              val result = homeApp.homeClient.updateFeatureConsent(
+                listOf(com.google.home.FeatureConsentType(FEATURE_PRESENCE_SENSING_NAME, FEATURE_PRESENCE_SENSING_ID.toInt())),
+                structure.id.id
+              )
+              refreshPresenceSettings()
+            } catch (e: Exception) {
+              Log.w("HomeAppViewModel", "Feature consent OFF request failed: ${e.message}")
+            }
+          }
+        }
 
-            // Scrap the draft and automation candidates used in the process:
-            selectedCandidateVMs.emit(null)
-            selectedDraftVM.emit(null)
-            isPending.value = false
+        val settings = structure.userPresenceSettings().firstOrNull()
+        if (settings != null) {
+          if (settings.presenceOptIn != optIn) {
+            settings.update {
+              setPresenceOptIn(optIn)
+            }
+          }
+        } else {
+          Log.w("HomeAppViewModel", "userPresenceSettings returned null")
+        }
+        refreshPresenceSettings()
+      } catch (e: Exception) {
+        Log.e("HomeAppViewModel", "Error setting presence opt-in: ${e.message}", e)
+      }
+    }
+  }
+
+  fun deleteSelectedStructureHistory() {
+    val structure = selectedStructureVM.value?.structure ?: return
+    viewModelScope.launch {
+      try {
+        structure.deleteHistory(emptyList())
+        Log.d("HomeAppViewModel", "Successfully deleted structure history")
+      } catch (e: Exception) {
+        Log.e("HomeAppViewModel", "Error deleting structure history: ${e.message}", e)
+      }
+    }
+  }
+
+  fun setSelectedStructure(structure: StructureViewModel?) {
+    currentStructureRepository.setSelectedStructure(structure)
+  }
+
+  var selectedDeviceVM: MutableStateFlow<DeviceViewModel?> = MutableStateFlow(null)
+  var selectedAutomationVM: MutableStateFlow<AutomationViewModel?> = MutableStateFlow(null)
+  var selectedDraftVM: MutableStateFlow<DraftViewModel?> = MutableStateFlow(null)
+  var selectedCandidateVMs: MutableStateFlow<List<CandidateViewModel>?> = MutableStateFlow(null)
+
+  // Container to store returned structures from the app:
+  var structureVMs: MutableStateFlow<List<StructureViewModel>> = MutableStateFlow(mutableListOf())
+
+  private var hubDiscoveryVM: HubDiscoveryViewModel? = null
+  val hubDiscoveryViewModel: HubDiscoveryViewModel
+    get() = hubDiscoveryVM!!
+
+  private val _selectedHistoryDeviceVM = MutableStateFlow<DeviceViewModel?>(null)
+  val selectedHistoryDeviceVM = _selectedHistoryDeviceVM.asStateFlow()
+  private val _selectedVideoEvent = MutableStateFlow<HistoryUiDataModel.CameraEvent?>(null)
+  val selectedVideoEvent = _selectedVideoEvent.asStateFlow()
+
+  // HomeBriefs state
+  /** The latest fetched list of Home Briefs for the selected structure. */
+  private val _homeBriefs = MutableStateFlow<List<HistoryUiDataModel.HomeBriefEvent>>(emptyList())
+  val homeBriefs: StateFlow<List<HistoryUiDataModel.HomeBriefEvent>> = _homeBriefs.asStateFlow()
+
+  /** True while a [loadHomeBriefs] fetch is in progress. */
+  private val _homeBriefsLoading = MutableStateFlow(false)
+  val homeBriefsLoading: StateFlow<Boolean> = _homeBriefsLoading.asStateFlow()
+
+  private val _selectedDeviceTypeFilter = MutableStateFlow(HistoryDeviceTypeFilter.All)
+  val selectedDeviceTypeFilter: StateFlow<HistoryDeviceTypeFilter> = _selectedDeviceTypeFilter.asStateFlow()
+
+  fun selectDeviceTypeFilter(filter: HistoryDeviceTypeFilter) {
+    _selectedDeviceTypeFilter.value = filter
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class, HomeExperimentalApi::class)
+  val historyFlow: Flow<PagingData<HistoryEventUi>> =
+    combine(
+        selectedStructureVM.filterNotNull().map { it.id }.distinctUntilChanged(),
+        selectedHistoryDeviceVM.map { it?.device?.id?.id }.distinctUntilChanged(),
+        selectedDeviceTypeFilter,
+      ) { structureId, deviceId, deviceTypeFilter ->
+        HistoryQueryState(structureId, deviceId, deviceTypeFilter)
+      }
+      .flatMapLatest { queryState ->
+        val structureId = queryState.structureId
+        val deviceId = queryState.deviceId
+        val deviceTypeFilter = queryState.deviceTypeFilter
+
+        // 1. Get the Structure object from the list of available structures
+        val structure =
+          structureVMs.value.firstOrNull { it.id == structureId }?.structure
+            ?: return@flatMapLatest kotlinx.coroutines.flow.flowOf(PagingData.empty())
+
+        // When deviceId is present (device-scoped history), ignore structure category chip filter
+        val activeFilter = if (deviceId != null) HistoryDeviceTypeFilter.All else deviceTypeFilter
+
+        Pager(PagingConfig(pageSize = 50)) {
+            // 2. Obtain historyManager from the specific structure
+            val historyManager = structure.getHistoryManager()
+            val builder = HomeHistoryPagingSource.Builder(historyManager)
+
+            // 3. Apply API-side filters (by device ID or category filter)
+            deviceId?.let { builder.addHistoryFilters(HistoryFilter.id(it)) }
+            activeFilter.toApiFilter()?.let { builder.addHistoryFilters(it) }
+            builder.build()
+          }
+          .flow
+          .map { pagingData ->
+            pagingData
+              .map { historyItem ->
+                // 4. Map raw SDK HistoryItem to your app's UI model
+                historyItem.toUiDataModel()
+              }
+              .filter { uiModel ->
+                when (activeFilter) {
+                  HistoryDeviceTypeFilter.All -> true
+                  HistoryDeviceTypeFilter.Camera -> uiModel is HistoryUiDataModel.CameraEvent
+                  HistoryDeviceTypeFilter.DoorLock -> uiModel is HistoryUiDataModel.DoorLockEvent
+                  HistoryDeviceTypeFilter.Thermostat ->
+                    uiModel is HistoryUiDataModel.ThermostatStateChange ||
+                    uiModel is HistoryUiDataModel.ExtendedThermostatStateChange
+                }
+              }
+              .insertSeparators { before, after ->
+                // 5. Add date separators (Today, Yesterday, etc.)
+                shouldAddDateSeparator(before, after)?.let { HistoryEventUi.DateSeparatorModel(it) }
+              }
+          }
+      }
+      .cachedIn(viewModelScope)
+
+  private val _navigateToProxyActivity = Channel<Unit>(Channel.CONFLATED)
+  val navigateToProxyActivity = _navigateToProxyActivity.receiveAsFlow()
+
+  fun signInWithGoogleAccount(context: Context) {
+    viewModelScope.launch {
+      try {
+        Log.d(TAG, "Initiating Google Sign-In flow...")
+        // CredentialManager is responsible for interacting with various credential providers on the
+        // device
+        val credentialManager = CredentialManager.create(context)
+        // Your GCP console Web Client ID for Google Sign-In
+        val serverClientId = BuildConfig.DEFAULT_WEB_CLIENT_ID
+        // Build the request for Google ID token
+        val googleIdOption =
+          GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false) // Show all Google accounts on the device
+            .setServerClientId(serverClientId) // embed WebClientID in token
+            .build()
+        // Build the GetCredentialRequest
+        val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
+
+        // Credential returns when user has selected an account and the getCredential call completes
+        val result = credentialManager.getCredential(context = context, request = request)
+        val credential = result.credential
+        Log.d(TAG, "get credential type: ${credential::class.java.simpleName}")
+
+        if (
+          credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+          try {
+            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+            googleCredential.id.let { email ->
+              Log.i(TAG, "Email found in Google ID Token: $email")
+              /*
+               Why "com.google"?
+               The string "com.google" is a standard identifier used in Android's android.accounts.
+               Account system to represent accounts managed by Google. This is often used when
+               interacting with Android's Account Manager or when using Google-specific APIs. So,
+               even if the email ends in "@gmail.com", the underlying account type or provider is
+               still considered "com.google" within the Android system.
+              */
+              val account = Account(email, "com.google")
+              homeApp.homeClientProvider.switchAccount(account.name, serverClientId)
+              Log.d(TAG, "Switched to account to : $account")
+            }
+            Log.i(TAG, "Account switch complete. Emitting navigation event.")
+            // Send an event to the channel to signal the UI to navigate.
+            _navigateToProxyActivity.send(Unit)
+          } catch (e: Exception) {
+            Log.e(TAG, "Could not convert CustomCredential to Google ID Token", e)
+            MainActivity.showError(
+              this@HomeAppViewModel,
+              "Could not convert CustomCredential to Google ID Token" + e.message,
+            )
+          }
+        } else {
+          Log.e(
+            TAG,
+            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}",
+          )
+          MainActivity.showError(
+            this@HomeAppViewModel,
+            "Google Sign-In failed: Unexpected result type ${credential::class.java.simpleName}",
+          )
+        }
+      } catch (e: NoCredentialException) {
+        Log.e(TAG, "No credentials available", e)
+        MainActivity.showError(
+          this@HomeAppViewModel,
+          "No accounts found. Please add a Google Account to your device settings.",
+        )
+      } catch (e: GetCredentialException) {
+        Log.e(TAG, "Credential retrieval failed", e)
+        // You might not want to show an error if the user simply cancelled the dialog
+        if (!e.message.orEmpty().contains("User cancelled")) {
+          MainActivity.showError(this@HomeAppViewModel, "Sign in failed: ${e.message}")
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "Google Sign-In failed with unexpected error", e)
+        MainActivity.showError(
+          this@HomeAppViewModel,
+          "Google Sign-In failed with unexpected error" + e.message,
+        )
+      }
+    }
+  }
+
+  private val selectedStructureFlow: Flow<Structure> =
+    selectedStructureVM
+      .filterNotNull()
+      .map { it.structure }
+      .shareIn(scope = viewModelScope, started = SharingStarted.Eagerly, replay = 1)
+
+  init {
+    Log.i(TAG, "HomeAppViewModel init")
+    // Assign active structure ID provider
+    homeApp.permissionsManager.currentStructureIdProvider = {
+      selectedStructureVM.value?.structure?.id?.id
+    }
+    val errorsEmitter: MutableSharedFlow<Exception> =
+      MutableSharedFlow(replay = 0, extraBufferCapacity = 0)
+    val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    // HubDiscoveryViewModel now consumes the derived selectedStructureFlow
+    hubDiscoveryVM =
+      HubDiscoveryViewModel(
+        structureFlow = selectedStructureFlow,
+        viewModelScope = viewModelScope,
+        errorsEmitter = errorsEmitter,
+        ioDispatcher = ioDispatcher,
+      )
+
+    viewModelScope.launch {
+      var structuresJob: Job? = null
+      // Resubscribe or cancel subscription when permission is updated
+      homeApp.permissionsManager.permissionUpdatedEvent
+        .map { homeApp.permissionsManager.isSignedIn.value }
+        .distinctUntilChanged()
+        .collect { isSignedIn ->
+          Log.i(TAG, "Sign-in state changed: $isSignedIn")
+          structuresJob?.cancel()
+          if (isSignedIn) {
+            structuresJob = viewModelScope.launch { subscribeToStructures() }
+          } else {
+            Log.d(TAG, "Cancel the job to subscribe to structure")
+          }
         }
     }
+  }
 
+  private suspend fun subscribeToStructures() {
+// TODO: 5.1.1 - Subscribe the structure data changes
+//     // Subscribe to structures returned by the Structures API:
+//     homeApp.homeClient.structures().collect { structureSet ->
+//       val previousById = structureVMs.value.associateBy { it.id }
+//       val structureVMList: MutableList<StructureViewModel> = mutableListOf()
+//       val keptIds = mutableSetOf<String>()
+//       // Store structures in container ViewModels (reusing existing instances by structure ID):
+//       for (structure in structureSet) {
+//         keptIds.add(structure.id.id)
+//         val vm = previousById[structure.id.id] ?: StructureViewModel(structure, isMultifacetEnabled)
+//         structureVMList.add(vm)
+//       }
+//       previousById.forEach { (id, vm) -> if (id !in keptIds) vm.clear() }
+//       // Store the ViewModels:
+//       structureVMs.emit(structureVMList)
+//
+//       // If a structure isn't selected yet (or was recreated), sync selectedStructureVM:
+//       val currentSelected = selectedStructureVM.value
+//       val matchingVM = currentSelected?.let { sel -> structureVMList.find { it.id == sel.id } }
+//       if (matchingVM != null) {
+//         if (matchingVM !== currentSelected) {
+//           currentStructureRepository.setSelectedStructure(matchingVM)
+//         }
+//       } else if (structureVMList.isNotEmpty()) {
+//         currentStructureRepository.setSelectedStructure(structureVMList.first())
+//         // Load HomeBriefs once the first structure is available
+//         loadHomeBriefs()
+//       }
+//     }
+  }
+
+  /**
+   * Reports an error message to the UI layer via the main logger. This is used when an error occurs
+   * outside of the standard flow emission (e.g., in onActivityResult).
+   *
+   * @param resultCode The result code of the failed activation.
+   */
+  fun handleActivationFailure(resultCode: Int) {
+    val errorMessage = "Hub activation failed with result code: $resultCode"
+    MainActivity.showError(this, errorMessage)
+  }
+
+  /** Starts the hub discovery process. */
+  fun startHubDiscovery() {
+    hubDiscoveryVM?.startDiscovery()
+  }
+
+  fun openQrCodeScanner() {
+    _showQrCodeScanner.value = true
+  }
+
+  fun closeQrCodeScanner() {
+    _showQrCodeScanner.value = false
+  }
+
+  // OTA Screen Functions
+  /**
+   * Shows the OTA information screen for a device
+   * Multi-part devices require enableMultipartDevices = true to expose
+   * their root node which contains OtaRequestorDevice / OtaSoftwareUpdateRequestor.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun showOtaScreen(deviceId: String? = null, deviceIds: List<String>? = null) {
+    _otaUiState.value = OtaUiState.Loading
+
+    val structure = selectedStructureVM.value?.structure
+    if (structure == null) {
+      Log.w(TAG, "No structure selected, skipping OTA stream")
+      return
+    }
+
+    val targetIds = mutableListOf<String>()
+    if (deviceId != null) targetIds.add(deviceId)
+    if (deviceIds != null) targetIds.addAll(deviceIds)
+
+    _otaDeviceId.value = deviceId
+    _otaDeviceIds.value = targetIds
+    Log.i(TAG, "showOtaScreen: starting OTA flow with primaryDeviceId=$deviceId, targetIds=$targetIds")
+
+    otaJob?.cancel()
+    otaJob = viewModelScope.launch {
+      try {
+        withTimeout(OTA_TIMEOUT_MILLIS) {
+          observeOtaFlow(structure, targetIds)
+        }
+      } catch (e: TimeoutCancellationException) {
+        Log.w(TAG, "OTA update timed out for deviceId=$deviceId", e)
+        _otaUiState.value = OtaUiState.Failed(currentVersionString = "OTA update timed out")
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        Log.e(TAG, "OTA update failed due to exception for deviceId=$deviceId", e)
+        _otaUiState.value = OtaUiState.Failed(currentVersionString = e.message)
+      }
+    }
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private suspend fun observeOtaFlow(structure: Structure, targetIds: List<String>) {
+    var hasShownScreen = false
+    Log.i(TAG, "observeOtaFlow: subscribing to structure devices (enableMultipartDevices = true) with targetIds=$targetIds")
+    structure
+      .devices(enableMultipartDevices = true)
+      .mapNotNull { devices ->
+        val chosenDevice = if (targetIds.isNotEmpty()) {
+          devices.firstOrNull { dev ->
+            val hasOta = dev.has(OtaRequestorDevice) || dev.has(OtaSoftwareUpdateRequestor)
+            val matchesTarget = hasOta && (
+              targetIds.contains(dev.id.id) || run {
+                val devTypes = runCatching { dev.types().firstOrNull() }.getOrNull() ?: emptySet()
+                devTypes.any { type -> type.metadata.partId?.substringBefore(":") in targetIds }
+              }
+            )
+            matchesTarget
+          }
+        } else {
+          devices.firstOrNull { it.has(OtaRequestorDevice) || it.has(OtaSoftwareUpdateRequestor) }
+        }
+        if (chosenDevice != null) {
+          Log.i(TAG, "observeOtaFlow: Found matching OTA target Device ID='${chosenDevice.id.id}', name='${chosenDevice.name}'")
+        }
+        chosenDevice
+      }
+      .distinctUntilChanged { old, new -> old.id == new.id }
+      .flatMapLatest { homeDevice ->
+        if (!hasShownScreen) {
+          hasShownScreen = true
+          _showOtaScreen.value = true
+        }
+        _otaDeviceId.value = homeDevice.id.id
+        _otaDeviceName.value = homeDevice.name
+        Log.i(TAG, "observeOtaFlow: Observing OTA stream for Device ID='${homeDevice.id.id}', name='${homeDevice.name}'")
+
+        var lastUpdateState: UpdateStateEnum? = null
+
+        val otaTraitFlow = combine(
+          homeDevice.typeOrNull(OtaRequestorDevice).onStart { emit(null) },
+          homeDevice.typeOrNull(RootNodeDevice).onStart { emit(null) }
+        ) { otaRequestor, rootNode ->
+          otaRequestor?.trait(OtaSoftwareUpdateRequestor)
+            ?: rootNode?.trait(OtaSoftwareUpdateRequestor)
+        }.filterNotNull()
+
+        val basicInfoFlow = homeDevice.typeOrNull(RootNodeDevice)
+          .map { rootNode -> rootNode?.trait(BasicInformation) }
+          .onStart { emit(null) }
+
+        combine(otaTraitFlow, basicInfoFlow) { otaTrait, basicInfo ->
+          if (otaTrait.updateState == UpdateStateEnum.Idle) {
+            if (lastUpdateState != UpdateStateEnum.Idle && basicInfo != null) {
+              lastUpdateState = UpdateStateEnum.Idle
+              runCatching {
+                Log.i(TAG, "observeOtaFlow: Forcing read of BasicInformation after OTA Idle for Device ID='${homeDevice.id.id}'")
+                basicInfo.forceRead()
+              }.onFailure { e ->
+                Log.w(TAG, "observeOtaFlow: Failed to forceRead BasicInformation for Device ID='${homeDevice.id.id}'", e)
+              }
+            }
+          } else {
+            lastUpdateState = otaTrait.updateState
+          }
+          otaTrait to basicInfo?.softwareVersionString
+        }
+      }
+      .distinctUntilChanged()
+      .map { (otaTrait, versionString) ->
+        mapUpdateStateToUiState(
+          updateState = otaTrait.updateState,
+          progress = otaTrait.updateStateProgress,
+          versionString = versionString
+        ).also { mappedState ->
+          Log.i(TAG, "observeOtaFlow: Device ID='${_otaDeviceId.value}' state update: updateState=${otaTrait.updateState}, progress=${otaTrait.updateStateProgress}, version=$versionString -> mappedState=$mappedState")
+        }
+      }
+      .collect { state ->
+        _otaUiState.value = state
+      }
+  }
+
+  fun closeOtaScreen() {
+    _showOtaScreen.value = false
+  }
+
+  /**
+   * Starts the commissioning flow with the selected fabric type and optional payload. This function
+   * manages the view transitions (scanner -> commissioning client).
+   */
+  fun onCommissionCamera(payload: String? = null) {
+
+    // 1. OPEN SCANNER: If payload is null (initial click), open the scanner UI.
+    if (payload == null) {
+      openQrCodeScanner()
+      return // Stop execution here, wait for the scanner result
+    }
+
+    // 2. START API: If payload exists (result from MatterQrCodeScanner), close the UI and call the
+    // API.
+    closeQrCodeScanner()
+    homeApp.commissioningManager.requestCommissioning(FabricType.GOOGLE_CAMERA, payload)
+  }
+
+  /** Shows automation candidates for the selected structure. */
+  @OptIn(HomeExperimentalApi::class)
+  fun showCandidates() {
+    viewModelScope.launch {
+      val candidateVMList: MutableList<CandidateViewModel> = mutableListOf()
+
+      // Retrieve automation candidates for every device present in the selected structure:
+      for (deviceVM in selectedStructureVM.value!!.deviceVMs.value) {
+
+        // Check whether the device has a known type:
+        if (deviceVM.type.value is UnknownDeviceType) continue
+        // Retrieve a set of initial automation candidates from the device:
+        val candidates: Set<NodeCandidate> = deviceVM.device.candidates().first()
+
+        for (candidate in candidates) {
+          // Check whether the candidate trait is supported:
+          if (candidate.trait !in HomeModule_ProvideSupportedTraitsFactory().get()) continue
+          // Check whether the candidate type is supported:
+          when (candidate) {
+            // Command candidate type:
+            is CommandCandidate -> {
+              // Check whether the command candidate has a supported command:
+              if (candidate.commandDescriptor !in ActionViewModel.commandMap) continue
+            }
+            // Other candidate types are currently unsupported:
+            else -> {
+              continue
+            }
+          }
+          candidateVMList.add(CandidateViewModel(candidate, deviceVM))
+        }
+      }
+
+      // Store the ViewModels:
+      selectedCandidateVMs.emit(candidateVMList)
+    }
+  }
+
+  /**
+   * Creates an automation from the currently selected draft.
+   *
+   * @param isPending A [MutableState] to track if the automation creation is in progress.
+   */
+  fun createAutomation(isPending: MutableState<Boolean>) {
+    viewModelScope.launch {
+      val structure: Structure = selectedStructureVM.value?.structure!!
+      val draft: DraftAutomation = selectedDraftVM.value?.getDraftAutomation()!!
+      isPending.value = true
+
+      // Call Automations API to create an automation from a draft:
+      try {
+        structure.createAutomation(draft)
+      } catch (e: Exception) {
+        MainActivity.showError(this, e.toString())
+        isPending.value = false
+        return@launch
+      }
+
+      // Scrap the draft and automation candidates used in the process:
+      selectedCandidateVMs.emit(null)
+      selectedDraftVM.emit(null)
+      isPending.value = false
+    }
+  }
+
+  /** Create a room on the currently selected structure. */
+  fun createRoomInSelectedStructure(name: String): Job = viewModelScope.launch {
+    val vm = selectedStructureVM.value ?: return@launch
+    vm.createRoom(name)
+  }
+
+  /** Delete a room from the currently selected structure. */
+  fun deleteRoomFromSelectedStructure(roomVM: RoomViewModel): Job = viewModelScope.launch {
+    val structureVM = selectedStructureVM.value ?: return@launch
+    structureVM.deleteRoom(roomVM)
+  }
+
+  /**
+   * Move a device into the given (non-null) room for the selected structure.
+   *
+   * @param device The [DeviceViewModel] of the device to move.
+   * @param room The [RoomViewModel] of the room to move the device to.
+   */
+  fun moveDeviceToRoom(device: DeviceViewModel, room: RoomViewModel): Job = viewModelScope.launch {
+    val vm = selectedStructureVM.value ?: return@launch
+    vm.moveDeviceToRoom(device, room)
+  }
+
+  /**
+   * Creates and shows a predefined draft for an On/Off light automation.
+   *
+   * This draft requires at least two OnOff-capable lights in the selected structure. If fewer than
+   * two are available, an error message is shown instead.
+   */
+  fun showPredefinedOnOffDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      val draftVM = repository.createOnOffLightAutomationDraft(structureVM.deviceVMs.value)
+
+      if (draftVM == null) {
+        MainActivity.showError(this, "Need at least two OnOff-capable lights in this structure.")
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+
+  /**
+   * Creates and shows a predefined draft for the "Speaker and Fan" automation.
+   *
+   * This draft requires a speaker, fan, and plug in the selected structure. If any required device
+   * is missing, an error message is shown instead.
+   */
+  fun showPredefinedSpeakerAndFanDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      // Pass the structure from selectedStructureVM
+      val draftVM =
+        repository.createSpeakerAndFanAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
+
+      if (draftVM == null) {
+        MainActivity.showError(
+          this,
+          "This automation requires:\n• 1 Speaker\n• 1 Fan\n• 1 Smart Outlet\n\nPlease add these devices and try again.",
+        )
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+
+  /**
+   * Shows the predefined light and thermostat automation draft This creates a draft that turns on
+   * lights and sets thermostat to auto when door is unlocked
+   */
+  suspend fun showPredefinedLightAndThermostatDraft() {
+    val structureVM = selectedStructureVM.value ?: return
+    val repository = AutomationsRepository()
+
+    val draftVM = repository.createLightAndThermostatAutomationDraft(structureVM.deviceVMs.value)
+    if (draftVM != null) {
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+
+  /**
+   * Creates and shows a predefined draft for the Window Covering automation.
+   *
+   * This draft requires a temperature sensor (or thermostat) and a window covering device. The
+   * automation closes the window covering when temperature drops below 15°C and it's dark outside.
+   */
+  fun showPredefinedWindowCoveringDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      val draftVM =
+        repository.createWindowCoveringAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
+
+      if (draftVM == null) {
+        MainActivity.showError(
+          this,
+          "This automation requires:\n• 1 Temperature Sensor (or Thermostat)\n• 1 Window Covering\n\nPlease add these devices and try again.",
+        )
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+
+  fun showPredefinedLightAndTVPeriodicDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      val draftVM =
+        repository.createLightAndTVPeriodicAutomationDraft(
+          structureVM.deviceVMs.value,
+          structureVM.structure,
+        )
+
+      if (draftVM == null) {
+        MainActivity.showError(
+          this,
+          "This automation requires:\n• At least 1 Light\n• 1 Occupancy Sensor\n• 1 Google TV\n\nPlease add these devices and try again.",
+        )
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+  /**
+   * Creates and shows a predefined draft for the "Camera Scene Detected" Natural
+   * Language camera starter automation. Uses a generic, location-independent query
+   * ("a person is detected") so it's reliably testable on any camera.
+   *
+   * This draft requires a camera and an OnOff-capable light in the selected structure.
+   * If either required device is missing, an error message is shown instead.
+   */
+  fun showPredefinedCameraSceneDetectedLightDraft() {
+    viewModelScope.launch {
+      val structureVM = selectedStructureVM.value ?: return@launch
+      val repository = AutomationsRepository()
+
+      val draftVM = repository.createCameraSceneDetectedLightAutomationDraft(
+        structureVM.deviceVMs.value
+      )
+
+      if (draftVM == null) {
+        MainActivity.showError(
+          this@HomeAppViewModel,
+          "This automation requires:\n• 1 Camera\n• 1 OnOff-capable Light\n\nPlease add these devices and try again."
+        )
+        return@launch
+      }
+
+      selectedDraftVM.emit(draftVM)
+    }
+  }
+
+  fun openHistoryForDevice(deviceVM: DeviceViewModel) {
+    _selectedHistoryDeviceVM.value = deviceVM
+  }
+
+  fun clearHistorySelection() {
+    _selectedHistoryDeviceVM.value = null
+  }
+
+  /** Opens the video player screen for the given camera history event. */
+  fun openVideoPlayer(event: HistoryUiDataModel.CameraEvent) {
+    _selectedVideoEvent.value = event
+  }
+
+  /** Closes the video player screen and returns to the history list. */
+  fun closeVideoPlayer() {
+    _selectedVideoEvent.value = null
+  }
+
+  /**
+   * Opens the video player for a HomeBrief camera event clip. Maps [HomeBriefCameraEvent] to
+   * [HistoryUiDataModel.CameraEvent] and reuses the existing [_selectedVideoEvent] state so the
+   * View only manages one player.
+   */
+  fun openHomeBriefVideo(event: HomeBriefCameraEvent) {
+    _selectedVideoEvent.value =
+      HistoryUiDataModel.CameraEvent(
+        eventId = event.sessionId,
+        timestamp = event.startTime ?: java.time.Instant.EPOCH,
+        entityName = "Camera Clip",
+        eventType = com.example.googlehomeapisampleapp.history.HistoryUiEventType.Unknown,
+        mediaUrl =
+          com.example.googlehomeapisampleapp.history.MediaUrl(
+            previewUrl = event.previewUrl,
+            mp4DownloadUrl = event.previewUrl,
+          ),
+        deviceId = event.entityObjectId.id,
+      )
+  }
+
+  /**
+   * Fetches the latest page of Home Briefs for the currently selected structure and exposes them
+   * via [homeBriefs]. Briefs are displayed pinned at the top of the activity feed, above camera
+   * history items.
+   *
+   * Non-fatal on error: the history feed still shows camera events if briefs are unavailable (e.g.
+   * feature not enabled for this account, trait offline). Guarded by [_homeBriefsLoading] to
+   * prevent concurrent fetches.
+   */
+  @OptIn(HomeExperimentalApi::class)
+  fun loadHomeBriefs() {
+    val structure =
+      selectedStructureVM.value?.structure
+        ?: run {
+          Log.w(TAG, "loadHomeBriefs: no structure selected, skipping")
+          return
+        }
+    if (_homeBriefsLoading.value) {
+      Log.d(TAG, "loadHomeBriefs: already loading, skipping")
+      return
+    }
+
+    viewModelScope.launch {
+      _homeBriefsLoading.value = true
+      try {
+        Log.d(TAG, "loadHomeBriefs: calling getHomeBriefsManager()")
+        val manager = structure.getHomeBriefsManager()
+        Log.d(TAG, "loadHomeBriefs: manager obtained, calling getHomeBriefs()")
+        when (val page = manager.getHomeBriefs()) {
+          is HomeBriefsPage.Success -> {
+            _homeBriefs.value = page.result.map { it.toUiDataModel() }
+            Log.d(TAG, "loadHomeBriefs: loaded ${_homeBriefs.value.size} briefs")
+          }
+          is HomeBriefsPage.Error -> {
+            // Non-fatal: HomeBriefs is an enhancement on top of camera history.
+            // Expected when the feature is not enabled for this account.
+            Log.w(TAG, "loadHomeBriefs: API returned error — ${page.exception.message}")
+          }
+        }
+      } catch (e: Exception) {
+        Log.w(TAG, "loadHomeBriefs: unexpected exception", e)
+      } finally {
+        _homeBriefsLoading.value = false
+      }
+    }
+  }
+
+  private fun shouldAddDateSeparator(
+    before: HistoryUiDataModel?,
+    after: HistoryUiDataModel?,
+  ): java.time.LocalDate? {
+    if (after == null) return null
+    val zone = java.time.ZoneId.systemDefault()
+    val afterDate = after.timestamp.atZone(zone).toLocalDate()
+    if (before == null) return afterDate
+    val beforeDate = before.timestamp.atZone(zone).toLocalDate()
+    return if (beforeDate != afterDate) afterDate else null
+  }
 }

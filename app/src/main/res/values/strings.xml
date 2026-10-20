@@ -1,69 +1,103 @@
 <resources>
-    <string name="app_name">Google Home API Sample App</string>
+  <string name="app_name">Google Home API Sample App</string>
 
-    <string name="new_automation_name">Google Home API Sample App</string>
-    <string name="new_automation_description">Google Home API Sample App</string>
+  <string name="welcome_text_1">Welcome to</string>
+  <string name="welcome_text_2">Google Home!</string>
+  <string name="welcome_text_3">Sign in to use</string>
+  <string name="welcome_text_4">Google Home APIs</string>
+  <string name="welcome_text_5">Sample Application</string>
 
-    <string name="welcome_text_1">Welcome to</string>
-    <string name="welcome_text_2">Google Home!</string>
-    <string name="welcome_text_3">Sign in to use</string>
-    <string name="welcome_text_4">Google Home APIs</string>
-    <string name="welcome_text_5">Sample Application</string>
-    <string name="welcome_button_signin">Sign In</string>
+  <string name="tab_button_devices">Devices</string>
+  <string name="tab_button_automations">Automations</string>
+  <string name="tab_button_activity">Activity</string>
 
-    <string name="tab_button_devices">Devices</string>
-    <string name="tab_button_automations">Automations</string>
+  <string name="devices_structure_loading">Loading…</string>
+  <string name="devices_button_add">+ Add Device</string>
 
-    <string name="devices_structure_loading">Loading...</string>
-    <string name="devices_button_add">+ Add Device</string>
+  <string name="draft_title">New Automation</string>
+  <string name="draft_label_name">Name</string>
+  <string name="draft_label_description">Description</string>
+  <string name="draft_text_starters">Starters</string>
+  <string name="draft_text_actions">Actions</string>
+  <string name="draft_new_starter_name">+Add Starter</string>
+  <string name="draft_new_starter_description">Click to select a starter for automation</string>
+  <string name="draft_new_action_name">+Add Action</string>
+  <string name="draft_new_action_description">Click to select an action for automation</string>
+  <string name="draft_text_creating">Creating…</string>
+  <string name="draft_button_create">Create Automation</string>
 
-    <string name="draft_title">New Automation</string>
-    <string name="draft_label_name">Name</string>
-    <string name="draft_label_description">Description</string>
-    <string name="draft_text_starters">Starters</string>
-    <string name="draft_text_actions">Actions</string>
-    <string name="draft_new_starter_name">+Add Starter</string>
-    <string name="draft_new_starter_description">Click to select a starter for automation</string>
-    <string name="draft_new_action_name">+Add Action</string>
-    <string name="draft_new_action_description">Click to select an action for automation</string>
-    <string name="draft_text_creating">Creating...</string>
-    <string name="draft_button_create">Create Automation</string>
+  <string name="candidate_button_create">Create Automation</string>
+  <string name="candidate_title_new">New Automation</string>
+  <string name="candidate_description_new">Create a new automation from scratch</string>
 
-    <string name="candidate_button_create">Create Automation</string>
-    <string name="candidate_title_new">New Automation</string>
-    <string name="candidate_description_new">Create a new automation from scratch</string>
+  <string name="starter_title_select">Select Starter</string>
+  <string name="starter_title_device">Device</string>
+  <string name="starter_title_trait">Trait</string>
+  <string name="starter_title_operation">Operation</string>
+  <string name="starter_title_value">Value</string>
+  <string name="starter_text_select">Select</string>
+  <string name="starter_button_create">Save Starter</string>
+  <string name="starter_button_update">Update Starter</string>
+  <string name="starter_button_remove">Remove Starter</string>
 
-    <string name="starter_title_select">Select Starter</string>
-    <string name="starter_title_device">Device</string>
-    <string name="starter_title_trait">Trait</string>
-    <string name="starter_title_operation">Operation</string>
-    <string name="starter_title_value">Value</string>
-    <string name="starter_text_select">Select</string>
-    <string name="starter_button_create">Save Starter</string>
-    <string name="starter_button_update">Update Starter</string>
-    <string name="starter_button_remove">Remove Starter</string>
+  <string name="action_title_select">Select Action</string>
+  <string name="action_title_device">Device</string>
+  <string name="action_title_trait">Trait</string>
+  <string name="action_title_command">Command</string>
+  <string name="action_title_value">Value</string>
+  <string name="action_text_select">Select</string>
+  <string name="action_button_create">Save Action</string>
+  <string name="action_button_update">Update Action</string>
+  <string name="action_button_remove">Remove Action</string>
 
-    <string name="action_title_select">Select Action</string>
-    <string name="action_title_device">Device</string>
-    <string name="action_title_trait">Trait</string>
-    <string name="action_title_command">Command</string>
-    <string name="action_title_value">Value</string>
-    <string name="action_text_select">Select</string>
-    <string name="action_button_create">Save Action</string>
-    <string name="action_button_update">Update Action</string>
-    <string name="action_button_remove">Remove Action</string>
+  <string name="automations_title">My Automations</string>
+  <string name="automations_text_loading">Loading…</string>
 
-    <string name="automations_title">My Automations</string>
-    <string name="automations_text_loading">Loading...</string>
+  <string name="automation_title_description">Description</string>
+  <string name="automation_title_starters">Starters</string>
+  <string name="automation_title_actions">Actions</string>
+  <string name="automation_title_status">Status</string>
+  <string name="automation_text_unknown">[Unknown Device]</string>
+  <string name="automation_text_is_valid">isValid</string>
+  <string name="automation_text_is_active">isActive</string>
+  <string name="automation_not_executable_message">This automation cannot be executed manually because it lacks a manual trigger.</string>
+  <string name="automation_button_execute">Manually Execute</string>
+  <string name="automation_button_delete">Delete Automation</string>
 
-    <string name="automation_title_description">Description</string>
-    <string name="automation_title_starters">Starters</string>
-    <string name="automation_title_actions">Actions</string>
-    <string name="automation_title_status">Status</string>
-    <string name="automation_text_unknown">[Unknown Device]</string>
-    <string name="automation_text_is_valid">isValid</string>
-    <string name="automation_text_is_active">isActive</string>
-    <string name="automation_button_execute">Manually Execute</string>
-    <string name="automation_button_delete">Delete Automation</string>
+  <string name="audio_recording_setting">Audio Recording</string>
+  <string name="camera_settings_title">Camera Settings</string>
+  <string name="camera_power_setting">Camera Power</string>
 
+  <!-- Gemini AI Features -->
+  <string name="ai_perception_title">AI &amp; Perception</string>
+  <string name="gemini_ai_features_title">Gemini AI Features</string>
+  <string name="ai_features_active_description">AI event detection &amp; captions active.\nNote: Recording must be enabled to view AI captions in camera history.</string>
+  <string name="ai_features_disabled_description">AI analysis disabled</string>
+  <string name="ai_features_unsupported_description">Not supported on this camera</string>
+
+  <string name="search_home" translatable="false">Search Home</string>
+  <string name="search_home_placeholder" translatable="false">Search for something...</string>
+  <string name="send_description" translatable="false">Send</string>
+  <string name="search_home_error" translatable="false">Response error: %1$s</string>
+  <string name="camera_content_description" translatable="false">Camera</string>
+  <string name="camera_thumbnail_description" translatable="false">Thumbnail</string>
+  <string name="search_home_camera_event_headline" translatable="false">Camera Event</string>
+
+  <string name="loading_text">Loading…</string>
+  <string name="error_text">Error</string>
+  <string name="not_available_text">N/A</string>
+
+  <!-- Activity Zone -->
+  <string name="activity_zone_config_title">Activity Zone Configuration</string>
+  <string name="activity_zone_camera_off">Camera is Off</string>
+  <string name="activity_zone_no_snapshot">No Snapshot Available</string>
+  <string name="activity_zone_refresh_snapshot">Refresh Live Snapshot</string>
+  <string name="activity_zone_configured_count">Configured Zones (%1$d/%2$d)</string>
+  <string name="activity_zone_add_zone">Add Zone</string>
+  <string name="activity_zone_empty_state">No activity zones created yet.\nTap \'Add Zone\' above to define a motion detection area.</string>
+  <string name="activity_zone_vertices_count">%1$d vertices · %2$s</string>
+  <string name="activity_zone_delete_zone">Delete zone</string>
+  <string name="activity_zone_unnamed">Zone %1$d</string>
+  <string name="activity_zone_nav_back">Navigate back to camera</string>
+  <string name="activity_zone_canvas_desc">Camera snapshot canvas</string>
 </resources>

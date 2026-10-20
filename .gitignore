@@ -9,7 +9,6 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 /.idea/deploymentTargetSelector.xml
-/.idea/deploymentTargetSelector.xml
 /.idea/inspectionProfiles/Project_Default.xml
 .DS_Store
 /build
@@ -18,3 +17,4 @@
 .externalNativeBuild
 .cxx
 local.properties
+.kotlin
