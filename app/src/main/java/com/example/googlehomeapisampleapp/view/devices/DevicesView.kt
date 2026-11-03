@@ -15,8 +15,11 @@ limitations under the License.
 
 package com.example.googlehomeapisampleapp.view.devices
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +28,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,12 +36,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -54,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,6 +98,7 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
 ) {
   val context = LocalContext.current
   var expanded by remember { mutableStateOf(false) }
+  var structureSnapshotUuid by rememberSaveable { mutableStateOf<String?>(null) }
   /**
    * UI Row containing:
    * - Account Icon Button: triggers a permission request using PermissionsManager.
@@ -154,6 +162,15 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
           onNavigateToPresenceSettings()
         }
       )
+      DropdownMenuItem(
+        text = { Text("Send Structure Snapshot") },
+        onClick = {
+          expanded = false
+          homeAppVM.sendStructureSnapshot(
+            onSnapshotCollected = { uuid -> structureSnapshotUuid = uuid }
+          )
+        }
+      )
       val isMultifacetEnabled by homeAppVM.isMultifacetEnabled.collectAsStateWithLifecycle()
       DropdownMenuItem(
         text = {
@@ -170,6 +187,37 @@ fun DevicesAccountButton(homeAppVM: HomeAppViewModel,
         }
       )
     }
+  }
+  structureSnapshotUuid?.let { uuid ->
+    AlertDialog(
+      onDismissRequest = { structureSnapshotUuid = null },
+      title = { Text("Structure Snapshot UUID") },
+      text = {
+        Column {
+          Text("Snapshot requested successfully with UUID:")
+          Spacer(modifier = Modifier.height(8.dp))
+          SelectionContainer {
+            Text(
+              text = uuid,
+              style = MaterialTheme.typography.bodyMedium,
+              fontWeight = FontWeight.Bold,
+            )
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            val clipboardManager = context.getSystemService(ClipboardManager::class.java)
+            clipboardManager?.setPrimaryClip(ClipData.newPlainText("Structure Snapshot UUID", uuid))
+            Toast.makeText(context, "UUID copied to clipboard", Toast.LENGTH_SHORT).show()
+          }
+        ) {
+          Text("Copy UUID")
+        }
+      },
+      dismissButton = { Button(onClick = { structureSnapshotUuid = null }) { Text("Close") } },
+    )
   }
 }
 

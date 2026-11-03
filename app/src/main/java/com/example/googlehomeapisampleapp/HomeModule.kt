@@ -51,6 +51,7 @@ import com.google.home.google.PushAvStreamTransport
 import com.google.home.google.RecordingMode
 import com.google.home.google.SearchableHome
 import com.google.home.google.Time
+import com.google.home.google.UserFeedback
 import com.google.home.google.VideoAnalysis
 import com.google.home.google.VoiceStarter
 import com.google.home.google.Volume
@@ -197,6 +198,7 @@ listOf(
       TemperatureMeasurement,
       Thermostat,
       Time,
+      UserFeedback,
       VideoAnalysis,
       VoiceStarter,
       Volume,

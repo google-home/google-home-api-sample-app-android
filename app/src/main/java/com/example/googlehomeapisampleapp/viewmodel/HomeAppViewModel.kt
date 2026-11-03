@@ -78,12 +78,14 @@ import com.google.home.google.AreaAttendanceState
 import com.google.home.google.AreaAttendanceStateTrait
 import com.google.home.google.AreaPresenceState
 import com.google.home.google.AreaPresenceStateTrait
+import com.google.home.google.UserFeedback
 import com.google.home.google.UserPresenceSettings
 import com.google.home.google.UserPresenceSettingsTrait
 import com.example.googlehomeapisampleapp.viewmodel.ota.OtaUiState
 import com.example.googlehomeapisampleapp.viewmodel.ota.mapUpdateStateToUiState
 import com.google.home.matter.standard.BasicInformation
 import com.google.home.matter.standard.RootNodeDevice
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +117,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 private data class HistoryQueryState(
     val structureId: String,
@@ -359,6 +362,39 @@ class HomeAppViewModel(
         Log.d("HomeAppViewModel", "Successfully deleted structure history")
       } catch (e: Exception) {
         Log.e("HomeAppViewModel", "Error deleting structure history: ${e.message}", e)
+      }
+    }
+  }
+
+  @OptIn(HomeExperimentalApi::class)
+  fun sendStructureSnapshot(onSnapshotCollected: (String) -> Unit) {
+    val structure = selectedStructureVM.value?.structure
+    if (structure == null) {
+      MainActivity.showWarning(this, "No structure selected.")
+      return
+    }
+    Log.i(TAG, "Sending snapshot for structure: ${structure.id}")
+    viewModelScope.launch {
+      try {
+        val trait = withTimeoutOrNull(5.seconds) {
+          structure.trait(UserFeedback).firstOrNull()
+        }
+        if (trait != null) {
+          val uuid = java.util.UUID.randomUUID().toString()
+          trait.userFeedback(uuid)
+          Log.i(TAG, "Structure snapshot requested with UUID: $uuid")
+          onSnapshotCollected(uuid)
+        } else {
+          MainActivity.showWarning(this@HomeAppViewModel, "UserFeedback trait not found.")
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        Log.e(TAG, "Failed to request structure snapshot", e)
+        MainActivity.showError(
+          this@HomeAppViewModel,
+          "Failed to request structure snapshot: ${e.message}",
+        )
       }
     }
   }
