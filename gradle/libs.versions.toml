@@ -1,6 +1,6 @@
 [versions]
-agp = "8.9.3"
-kotlin = "2.2.21"
+agp = "8.13.2"
+kotlin = "2.4.0"
 coreKtx = "1.17.0"
 lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.12.2"
@@ -10,7 +10,7 @@ navigationCompose = "2.9.6"
 hilt = "2.57.2"
 androidx-hilt-compiler = "1.3.0"
 androidx-hilt-navigation-compose = "1.3.0"
-ksp = "2.2.21-2.0.4"
+ksp = "2.3.11"
 playServicesHome = "17.1.0"
 playServicesHomeTypes = "17.1.0"
 playServicesAuth = "21.3.0"
@@ -21,7 +21,7 @@ credentials = "1.5.0"
 pagingCommon = "3.4.0"
 coil = "3.0.0"
 media3 = "1.9.3"
-kotlinxCoroutines = "1.10.1"
+kotlinxCoroutines = "1.11.0"
 
 [libraries]
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsExtended" }

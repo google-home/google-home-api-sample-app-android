@@ -97,6 +97,7 @@ dependencies {
   // Dependency Injection & Camera
   implementation(libs.dagger.hilt.android)
   ksp(libs.hilt.android.compiler)
+  ksp("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.0")
   implementation(libs.androidx.hilt.navigation.compose)
   ksp(libs.androidx.hilt.compiler)
   implementation(libs.stream.webrtc.android)
